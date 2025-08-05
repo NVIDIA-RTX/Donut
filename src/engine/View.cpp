@@ -78,7 +78,7 @@ void PlanarView::UpdateCache()
     m_ViewProjMatrixInv = m_ProjMatrixInv * affineToHomogeneous(m_ViewMatrixInv);
     m_ViewProjOffsetMatrixInv = m_PixelOffsetMatrixInv * m_ViewProjMatrixInv;
 
-    m_ReverseDepth = (m_ProjMatrix[2][2] == 0.f);
+    m_ReverseDepth = (m_ProjMatrix[2][2] < 0.f);
     m_ViewFrustum = frustum(m_ViewProjMatrix, m_ReverseDepth);
     m_ProjectionFrustum = frustum(m_ProjMatrix, m_ReverseDepth);
 
