@@ -148,7 +148,7 @@ bool Scene::LoadWithExecutor(const std::filesystem::path& sceneFileName, tf::Exe
     g_LoadingStats.ObjectsLoaded = 0;
     g_LoadingStats.ObjectsTotal = 0;
     
-    m_SceneGraph = std::make_shared<SceneGraph>();
+    m_SceneGraph = m_SceneTypeFactory->CreateGraph();
 
     if (sceneFileName.extension() == ".gltf" || sceneFileName.extension() == ".glb")
     {
@@ -181,7 +181,7 @@ bool Scene::LoadWithExecutor(const std::filesystem::path& sceneFileName, tf::Exe
 
         if (documentRoot.isObject())
         {
-            if (!LoadCustomData(documentRoot, executor))
+            if (!LoadCustomData(documentRoot, scenePath, executor))
                 return false;
 
             LoadModels(documentRoot["models"], scenePath, executor);
@@ -592,7 +592,7 @@ void Scene::LoadAnimations(const Json::Value& nodeList)
     }
 }
 
-bool Scene::LoadCustomData(Json::Value& rootNode, tf::Executor* executor)
+bool Scene::LoadCustomData(Json::Value& rootNode, const std::filesystem::path& scenePath, tf::Executor* executor)
 {
     // Reserved for derived classes
     return true;

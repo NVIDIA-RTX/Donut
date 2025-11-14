@@ -110,7 +110,7 @@ namespace donut::engine
         virtual nvrhi::BufferHandle CreateInstanceBuffer();
         virtual nvrhi::BufferHandle CreateMaterialConstantBuffer(const std::string& debugName);
 
-        virtual bool LoadCustomData(Json::Value& rootNode, tf::Executor* executor);
+        virtual bool LoadCustomData(Json::Value& rootNode, const std::filesystem::path& scenePath, tf::Executor* executor);
     public:
         virtual ~Scene() = default;
 
