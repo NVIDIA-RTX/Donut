@@ -1134,6 +1134,11 @@ void SceneGraph::Refresh(uint32_t frameIndex)
     }
 }
 
+std::shared_ptr<SceneGraph> SceneTypeFactory::CreateGraph()
+{
+	return std::make_shared<SceneGraph>();
+}
+
 std::shared_ptr<SceneGraphLeaf> SceneTypeFactory::CreateLeaf(const std::string& type)
 {
     if (type == "DirectionalLight")

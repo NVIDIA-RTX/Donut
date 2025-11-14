@@ -148,7 +148,7 @@ bool Scene::LoadWithExecutor(const std::filesystem::path& sceneFileName, tf::Exe
     g_LoadingStats.ObjectsLoaded = 0;
     g_LoadingStats.ObjectsTotal = 0;
     
-    m_SceneGraph = std::make_shared<SceneGraph>();
+    m_SceneGraph = m_SceneTypeFactory->CreateGraph();
 
     if (sceneFileName.extension() == ".gltf" || sceneFileName.extension() == ".glb")
     {
