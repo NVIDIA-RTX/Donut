@@ -114,6 +114,7 @@ void InstancedOpaqueDrawStrategy::FillChunk()
                         item.buffers = item.mesh->buffers.get();
                         item.cullMode = (item.material->doubleSided) ? nvrhi::RasterCullMode::None : nvrhi::RasterCullMode::Back;
                         item.distanceToCamera = 0; // don't care
+                        item.userData = nullptr;
                         
                         ++writePtr;
                         ++itemCount;
@@ -222,6 +223,7 @@ void TransparentDrawStrategy::PrepareForView(const std::shared_ptr<engine::Scene
                         item.material = geometry->material.get();
                         item.buffers = mesh->buffers.get();
                         item.distanceToCamera = length(geometryGlobalBoundingBox.center() - viewOrigin);
+                        item.userData = nullptr;
                         if (material->doubleSided)
                         {
                             if (DrawDoubleSidedMaterialsSeparately)

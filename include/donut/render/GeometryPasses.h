@@ -49,6 +49,7 @@ namespace donut::render
         const engine::BufferGroup* buffers;
         float distanceToCamera;
         nvrhi::RasterCullMode cullMode;
+        void* userData;
     };
 
     class GeometryPassContext
