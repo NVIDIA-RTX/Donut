@@ -1228,6 +1228,15 @@ void Scene::UpdateGeometry(const std::shared_ptr<MeshInfo>& mesh)
     }
 }
 
+GeometryData* Scene::GetGeometryData(const MeshGeometry& geometry) const
+{
+    if (m_Resources == nullptr)
+        return nullptr;
+
+    return &m_Resources->geometryData[geometry.globalGeometryIndex];
+}
+
+
 void Scene::UpdateInstance(const std::shared_ptr<MeshInstance>& instance)
 {
     SceneGraphNode* node = instance->GetNode();
