@@ -1230,7 +1230,7 @@ void Scene::UpdateGeometry(const std::shared_ptr<MeshInfo>& mesh)
 
 GeometryData* Scene::GetGeometryData(const MeshGeometry& geometry) const
 {
-    if (m_Resources == nullptr)
+    if (m_Resources == nullptr || uint(geometry.globalGeometryIndex) >= m_Resources->geometryData.size() )
         return nullptr;
 
     return &m_Resources->geometryData[geometry.globalGeometryIndex];
