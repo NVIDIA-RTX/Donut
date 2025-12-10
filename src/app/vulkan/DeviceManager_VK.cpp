@@ -349,7 +349,9 @@ bool DeviceManager_VK::pickPhysicalDevice()
 
         vk::PhysicalDeviceFeatures2 deviceFeatures2{};
         vk::PhysicalDeviceDynamicRenderingFeatures dynamicRenderingFeatures{};
+        vk::PhysicalDeviceRayTracingLinearSweptSpheresFeaturesNV linearSweptSpheresFeatures{};
         deviceFeatures2.pNext = &dynamicRenderingFeatures;
+        dynamicRenderingFeatures.pNext = &linearSweptSpheresFeatures;
 
         dev.getFeatures2(&deviceFeatures2);
         if (!deviceFeatures2.features.samplerAnisotropy)
@@ -366,6 +368,16 @@ bool DeviceManager_VK::pickPhysicalDevice()
         if (!dynamicRenderingFeatures.dynamicRendering)
         {
             errorStream << std::endl << "  - does not support dynamicRendering";
+            deviceIsGood = false;
+        }
+        if (!linearSweptSpheresFeatures.spheres)
+        {
+            errorStream << std::endl << "  - does not support sphere primitives";
+            deviceIsGood = false;
+        }
+        if (!linearSweptSpheresFeatures.linearSweptSpheres)
+        {
+            errorStream << std::endl << "  - does not support Linear-Swept-Sphere(LSS) primitives";
             deviceIsGood = false;
         }
 
@@ -581,6 +593,7 @@ bool DeviceManager_VK::createDevice()
     bool aftermathSupported = false;
     bool clusterAccelerationStructureSupported = false;
     bool mutableDescriptorTypeSupported = false;
+    bool linearSweptSpheresSupported = false;
 
     log::message(m_DeviceParams.infoLogSeverity, "Enabled Vulkan device extensions:");
     for (const auto& ext : enabledExtensions.device)
@@ -613,6 +626,8 @@ bool DeviceManager_VK::createDevice()
             clusterAccelerationStructureSupported = true;
         else if (ext == VK_EXT_MUTABLE_DESCRIPTOR_TYPE_EXTENSION_NAME)
             mutableDescriptorTypeSupported = true;
+        else if (ext == VK_NV_RAY_TRACING_LINEAR_SWEPT_SPHERES_EXTENSION_NAME)
+            linearSweptSpheresSupported = true;
     }
 
 #define APPEND_EXTENSION(condition, desc) if (condition) { (desc).pNext = pNext; pNext = &(desc); }  // NOLINT(cppcoreguidelines-macro-usage)
@@ -692,6 +707,9 @@ bool DeviceManager_VK::createDevice()
         .setMutableDescriptorType(true);
     auto dynamicRenderingFeatures = vk::PhysicalDeviceDynamicRenderingFeatures()
         .setDynamicRendering(true);
+    auto linearSweptSpheresFeatures = vk::PhysicalDeviceRayTracingLinearSweptSpheresFeaturesNV()
+        .setSpheres(true)
+        .setLinearSweptSpheres(true);
     
     pNext = nullptr;
     APPEND_EXTENSION(accelStructSupported, accelStructFeatures)
@@ -706,6 +724,7 @@ bool DeviceManager_VK::createDevice()
     APPEND_EXTENSION(physicalDeviceProperties.apiVersion >= VK_API_VERSION_1_3, vulkan13features)
     APPEND_EXTENSION(physicalDeviceProperties.apiVersion < VK_API_VERSION_1_3 && maintenance4Supported, maintenance4Features)
     APPEND_EXTENSION(physicalDeviceProperties.apiVersion < VK_API_VERSION_1_3, dynamicRenderingFeatures)
+    APPEND_EXTENSION(linearSweptSpheresSupported, linearSweptSpheresFeatures)
     
 #if DONUT_WITH_AFTERMATH
     if (aftermathPhysicalFeatures.diagnosticsConfig && m_DeviceParams.enableAftermath)

@@ -49,6 +49,7 @@ struct GeometryData
 };
 
 static const uint InstanceFlags_CurveDisjointOrthogonalTriangleStrips = 0x00000001u;
+static const uint InstanceFlags_CurveLinearSweptSpheres = 0x00000002u;
 
 struct InstanceData
 {
@@ -65,6 +66,7 @@ struct InstanceData
     float3x4 prevTransform;
 
     bool IsCurveDOTS() { return (flags & InstanceFlags_CurveDisjointOrthogonalTriangleStrips) != 0; }
+    bool IsCurveLSS() { return (flags & InstanceFlags_CurveLinearSweptSpheres) != 0; }
 };
 
 #ifndef __cplusplus

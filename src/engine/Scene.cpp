@@ -1257,4 +1257,11 @@ void Scene::UpdateInstance(const std::shared_ptr<MeshInstance>& instance)
     {
         idata.flags |= InstanceFlags_CurveDisjointOrthogonalTriangleStrips;
     }
+    else if (mesh->type == MeshType::CurveLinearSweptSpheres)
+    {
+        // NVAPI does not support Vulkan, so NvRtIsLssHit() cannot be used to detect LSS hits.
+        // Instead, we explicitly mark each LSS instance with a flag and check this flag during hit processing.
+        // For consistency and completeness, this flag is also set for DX12.
+        idata.flags |= InstanceFlags_CurveLinearSweptSpheres;
+    }
 }
