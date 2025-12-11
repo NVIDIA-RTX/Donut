@@ -349,9 +349,7 @@ bool DeviceManager_VK::pickPhysicalDevice()
 
         vk::PhysicalDeviceFeatures2 deviceFeatures2{};
         vk::PhysicalDeviceDynamicRenderingFeatures dynamicRenderingFeatures{};
-        vk::PhysicalDeviceRayTracingLinearSweptSpheresFeaturesNV linearSweptSpheresFeatures{};
         deviceFeatures2.pNext = &dynamicRenderingFeatures;
-        dynamicRenderingFeatures.pNext = &linearSweptSpheresFeatures;
 
         dev.getFeatures2(&deviceFeatures2);
         if (!deviceFeatures2.features.samplerAnisotropy)
@@ -368,16 +366,6 @@ bool DeviceManager_VK::pickPhysicalDevice()
         if (!dynamicRenderingFeatures.dynamicRendering)
         {
             errorStream << std::endl << "  - does not support dynamicRendering";
-            deviceIsGood = false;
-        }
-        if (!linearSweptSpheresFeatures.spheres)
-        {
-            errorStream << std::endl << "  - does not support sphere primitives";
-            deviceIsGood = false;
-        }
-        if (!linearSweptSpheresFeatures.linearSweptSpheres)
-        {
-            errorStream << std::endl << "  - does not support Linear-Swept-Sphere(LSS) primitives";
             deviceIsGood = false;
         }
 
