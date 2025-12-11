@@ -287,7 +287,7 @@ namespace donut::app
         float m_PrevDPIScaleFactorY = 0.f;
         bool m_RequestedVSync = false;
         bool m_InstanceCreated = false;
-        bool m_RequestedRenderUnfocused = false;
+        bool m_RequestedRenderUnfocused = true;
 
         double m_AverageFrameTime = 0.0;
         double m_AverageTimeUpdateInterval = 0.5;

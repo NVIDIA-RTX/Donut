@@ -277,6 +277,11 @@ bool DeviceManager::CreateWindowDeviceAndSwapChain(const DeviceCreationParameter
     m_DeviceParams.headlessDevice = false;
     m_RequestedVSync = params.vsyncEnabled;
 
+#ifndef _WINDOWS
+    // This is necessary to get correct window decorations on Wayland
+    glfwInitHint(GLFW_PLATFORM, GLFW_PLATFORM_X11);
+#endif
+
     if (!CreateInstance(m_DeviceParams))
         return false;
 
