@@ -496,7 +496,6 @@ void DeviceManager::CreateDepthBuffer()
         .setSampleQuality(m_DeviceParams.swapChainSampleQuality)
         .setIsTypeless(true)
         .setIsRenderTarget(true)
-        .setClearValue(nvrhi::Color(m_DeviceParams.depthBufferClearValue, 0.f, 0.f, 0.f))
         .enableAutomaticStateTracking(nvrhi::ResourceStates::DepthWrite);
 
     m_DepthBuffer = GetDevice()->createTexture(textureDesc);

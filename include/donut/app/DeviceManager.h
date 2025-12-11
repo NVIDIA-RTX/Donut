@@ -160,9 +160,6 @@ namespace donut::app
         // The depth buffer is attached to every swap chain framebuffer provided to the render passes.
         nvrhi::Format depthBufferFormat = nvrhi::Format::UNKNOWN;
 
-        // Clear value for the depth buffer, will be used to create the texture.
-        float depthBufferClearValue = 0.f;
-
         uint32_t maxFramesInFlight = 2;
         bool enableNvrhiValidationLayer = false;
         bool vsyncEnabled = false;
