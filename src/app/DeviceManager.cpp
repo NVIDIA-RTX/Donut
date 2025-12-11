@@ -428,6 +428,7 @@ void DeviceManager::RemoveRenderPass(IRenderPass *pRenderPass)
 void DeviceManager::BackBufferResizing()
 {
     m_SwapChainFramebuffers.clear();
+    m_SwapChainWithDepthFramebuffers.clear();
 
     for (auto it : m_vRenderPasses)
     {
@@ -437,6 +438,8 @@ void DeviceManager::BackBufferResizing()
 
 void DeviceManager::BackBufferResized()
 {
+    CreateDepthBuffer();
+
     for(auto it : m_vRenderPasses)
     {
         it->BackBufferResized(m_DeviceParams.backBufferWidth,
@@ -446,10 +449,23 @@ void DeviceManager::BackBufferResized()
 
     uint32_t backBufferCount = GetBackBufferCount();
     m_SwapChainFramebuffers.resize(backBufferCount);
+    m_SwapChainWithDepthFramebuffers.resize(backBufferCount);
     for (uint32_t index = 0; index < backBufferCount; index++)
     {
-        m_SwapChainFramebuffers[index] = GetDevice()->createFramebuffer(
-            nvrhi::FramebufferDesc().addColorAttachment(GetBackBuffer(index)));
+        nvrhi::FramebufferDesc framebufferDesc = nvrhi::FramebufferDesc()
+            .addColorAttachment(GetBackBuffer(index));
+        
+        m_SwapChainFramebuffers[index] = GetDevice()->createFramebuffer(framebufferDesc);
+
+        if (m_DepthBuffer)
+        {
+            framebufferDesc.setDepthAttachment(m_DepthBuffer);
+            m_SwapChainWithDepthFramebuffers[index] = GetDevice()->createFramebuffer(framebufferDesc);
+        }
+        else
+        {
+            m_SwapChainWithDepthFramebuffers[index] = m_SwapChainFramebuffers[index];
+        }
     }
 }
 
@@ -459,6 +475,31 @@ void DeviceManager::DisplayScaleChanged()
     {
         it->DisplayScaleChanged(m_DPIScaleFactorX, m_DPIScaleFactorY);
     }
+}
+
+void DeviceManager::CreateDepthBuffer()
+{
+    m_DepthBuffer = nullptr;
+
+    if (m_DeviceParams.depthBufferFormat == nvrhi::Format::UNKNOWN)
+        return;
+
+    nvrhi::TextureDesc textureDesc = nvrhi::TextureDesc()
+        .setDebugName("Depth Buffer")
+        .setWidth(m_DeviceParams.backBufferWidth)
+        .setHeight(m_DeviceParams.backBufferHeight)
+        .setFormat(m_DeviceParams.depthBufferFormat)
+        .setDimension(m_DeviceParams.swapChainSampleCount > 1
+            ? nvrhi::TextureDimension::Texture2DMS
+            : nvrhi::TextureDimension::Texture2D)
+        .setSampleCount(m_DeviceParams.swapChainSampleCount)
+        .setSampleQuality(m_DeviceParams.swapChainSampleQuality)
+        .setIsTypeless(true)
+        .setIsRenderTarget(true)
+        .setClearValue(nvrhi::Color(m_DeviceParams.depthBufferClearValue, 0.f, 0.f, 0.f))
+        .enableAutomaticStateTracking(nvrhi::ResourceStates::DepthWrite);
+
+    m_DepthBuffer = GetDevice()->createTexture(textureDesc);
 }
 
 void DeviceManager::Animate(double elapsedTime, bool windowIsFocused)
@@ -474,12 +515,10 @@ void DeviceManager::Animate(double elapsedTime, bool windowIsFocused)
 }
 
 void DeviceManager::Render()
-{    
-    nvrhi::IFramebuffer* framebuffer = m_SwapChainFramebuffers[GetCurrentBackBufferIndex()];
-
+{
     for (auto it : m_vRenderPasses)
     {
-        it->Render(framebuffer);
+        it->Render(GetCurrentFramebuffer(it->SupportsDepthBuffer()));
     }
 }
 
@@ -884,11 +923,13 @@ void JoyStickManager::UpdateJoystick(int j, const std::list<IRenderPass*>& passe
 void DeviceManager::Shutdown()
 {
 #if DONUT_WITH_STREAMLINE
-    // Shut down Streamline before destroying swapchain and device.
+    // Shut down Streamline before destroying swap chain and device.
     StreamlineIntegration::Get().Shutdown();
 #endif
 
     m_SwapChainFramebuffers.clear();
+    m_SwapChainWithDepthFramebuffers.clear();
+    m_DepthBuffer = nullptr;
 
     DestroyDeviceAndSwapChain();
 
@@ -903,15 +944,23 @@ void DeviceManager::Shutdown()
     m_InstanceCreated = false;
 }
 
-nvrhi::IFramebuffer* donut::app::DeviceManager::GetCurrentFramebuffer()
+nvrhi::IFramebuffer* donut::app::DeviceManager::GetCurrentFramebuffer(bool withDepth)
 {
-    return GetFramebuffer(GetCurrentBackBufferIndex());
+    return GetFramebuffer(GetCurrentBackBufferIndex(), withDepth);
 }
 
-nvrhi::IFramebuffer* donut::app::DeviceManager::GetFramebuffer(uint32_t index)
+nvrhi::IFramebuffer* donut::app::DeviceManager::GetFramebuffer(uint32_t index, bool withDepth)
 {
-    if (index < m_SwapChainFramebuffers.size())
-        return m_SwapChainFramebuffers[index];
+    if (withDepth)
+    {
+        if (index < m_SwapChainWithDepthFramebuffers.size())
+            return m_SwapChainWithDepthFramebuffers[index];
+    }
+    else
+    {
+        if (index < m_SwapChainFramebuffers.size())
+            return m_SwapChainFramebuffers[index];
+    }
 
     return nullptr;
 }

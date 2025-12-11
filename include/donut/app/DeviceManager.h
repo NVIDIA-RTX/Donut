@@ -155,6 +155,14 @@ namespace donut::app
         nvrhi::Format swapChainFormat = nvrhi::Format::SRGBA8_UNORM;
         uint32_t swapChainSampleCount = 1;
         uint32_t swapChainSampleQuality = 0;
+
+        // Sets the format for the primary depth buffer. UNKNOWN means no depth buffer (legacy behavior).
+        // The depth buffer is attached to every swap chain framebuffer provided to the render passes.
+        nvrhi::Format depthBufferFormat = nvrhi::Format::UNKNOWN;
+
+        // Clear value for the depth buffer, will be used to create the texture.
+        float depthBufferClearValue = 0.f;
+
         uint32_t maxFramesInFlight = 2;
         bool enableNvrhiValidationLayer = false;
         bool vsyncEnabled = false;
@@ -297,6 +305,8 @@ namespace donut::app
         uint32_t m_FrameIndex = 0;
 
         std::vector<nvrhi::FramebufferHandle> m_SwapChainFramebuffers;
+        std::vector<nvrhi::FramebufferHandle> m_SwapChainWithDepthFramebuffers;
+        nvrhi::TextureHandle m_DepthBuffer;
 
         DeviceManager();
 
@@ -306,6 +316,7 @@ namespace donut::app
         void BackBufferResizing();
         void BackBufferResized();
         void DisplayScaleChanged();
+        void CreateDepthBuffer();
 
         void Animate(double elapsedTime, bool windowIsFocused);
         void Render();
@@ -361,8 +372,9 @@ namespace donut::app
         virtual nvrhi::ITexture* GetBackBuffer(uint32_t index) = 0;
         virtual uint32_t GetCurrentBackBufferIndex() = 0;
         virtual uint32_t GetBackBufferCount() = 0;
-        nvrhi::IFramebuffer* GetCurrentFramebuffer();
-        nvrhi::IFramebuffer* GetFramebuffer(uint32_t index);
+        nvrhi::IFramebuffer* GetCurrentFramebuffer(bool withDepth = true);
+        nvrhi::IFramebuffer* GetFramebuffer(uint32_t index, bool withDepth = true);
+        nvrhi::ITexture* GetDepthBuffer() const { return m_DepthBuffer; }
 
         virtual void Shutdown();
         virtual ~DeviceManager() = default;
@@ -420,6 +432,13 @@ namespace donut::app
         virtual void SetLatewarpOptions() { }
         virtual bool ShouldAnimateUnfocused() { return false; }
         virtual bool ShouldRenderUnfocused() { return false; }
+        
+        // If this function returns 'true', and the device manager has a depth buffer
+        // (DeviceCreationParameters::depthBufferFormat != UNKNOWN), the Render(...) function will be called
+        // with a framebuffer that has a depth attachment.
+        // Otherwise, the framebuffer will only have a color attachment - which is useful for UI rendering.
+        virtual bool SupportsDepthBuffer() { return true; }
+
         virtual void Render(nvrhi::IFramebuffer* framebuffer) { }
         virtual void Animate(float fElapsedTimeSeconds) { }
         virtual void BackBufferResizing() { }

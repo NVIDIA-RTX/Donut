@@ -160,6 +160,7 @@ namespace donut::app
         virtual void BackBufferResizing() override;
         virtual void DisplayScaleChanged(float scaleX, float scaleY) override;
         virtual bool ShouldAnimateUnfocused() override { return true; }
+        virtual bool SupportsDepthBuffer() override { return false; }
 
     protected:
         // creates the UI in ImGui, updates internal UI state
