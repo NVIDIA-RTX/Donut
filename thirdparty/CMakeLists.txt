@@ -67,11 +67,6 @@ if (DONUT_WITH_NVRHI AND NOT TARGET glfw)
     set_target_properties(update_mappings PROPERTIES FOLDER ${third_party_folder})
 endif()
 
-if (DONUT_WITH_LZ4 AND NOT TARGET lz4)
-    include(lz4.cmake)
-    set_target_properties(lz4 PROPERTIES FOLDER ${third_party_folder})
-endif()
-
 if (DONUT_WITH_MINIZ AND NOT TARGET miniz)
     add_subdirectory(miniz)
     set_target_properties(miniz PROPERTIES FOLDER ${third_party_folder})

@@ -25,7 +25,6 @@
 #include <donut/core/log.h>
 #include <donut/core/string_utils.h>
 #include <donut/core/vfs/TarFile.h>
-#include <donut/core/vfs/Compression.h>
 #ifdef DONUT_WITH_MINIZ
 #include <donut/core/vfs/ZipFile.h>
 #endif
@@ -41,8 +40,6 @@ MediaFileSystem::MediaFileSystem(
 {
 	// always seach media folder vfs first
 	auto mediafs = std::make_shared<RelativeFileSystem>(parent, mediaFolder);
-	auto compressionLayer = std::make_shared<CompressionLayer>(mediafs);
-	m_FileSystems.push_back(compressionLayer);
 
 	// open package files & add a vfs for each
 	NativeFileSystem* nativeFS = dynamic_cast<NativeFileSystem*>(parent.get());
@@ -65,8 +62,7 @@ MediaFileSystem::MediaFileSystem(
 				{
 					if (auto packfs = std::make_shared<TarFile>(filePath); packfs->isOpen())
 					{
-						auto tarDecompressionLayer = std::make_shared<CompressionLayer>(packfs);
-						m_FileSystems.push_back(tarDecompressionLayer);
+						m_FileSystems.push_back(packfs);
 						mounted = true;
 					}
 				}

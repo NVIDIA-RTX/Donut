@@ -34,9 +34,7 @@ namespace donut::vfs
     ZipFile can only operate on real files, i.e. underlying virtual file systems are not supported.
 
     Note: zip file support is provided because it's a ubiquitous standard. Reading large assets
-    from zip files is very slow compared to other storage methods. Donut supports reading assets
-    compressed with LZ4 and stored in tar archives, which is significantly faster, in part because 
-    such files can be decompressed in parallel. See the TarFile and CompressionLayer classes.
+    from zip files is very slow compared to other storage methods.
     */
     class ZipFile : public IFileSystem
     {

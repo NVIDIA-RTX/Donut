@@ -23,13 +23,11 @@
 file(GLOB donut_core_src
     include/donut/core/chunk/*.h
     include/donut/core/math/*.h
-    include/donut/core/vfs/Compression.h
     include/donut/core/vfs/TarFile.h
     include/donut/core/vfs/VFS.h
     include/donut/core/*.h
     src/core/chunk/*.cpp
     src/core/math/*.cpp
-    src/core/vfs/Compression.cpp
     src/core/vfs/TarFile.cpp
     src/core/vfs/VFS.cpp
     src/core/*.cpp
@@ -49,11 +47,6 @@ if(WIN32)
         src/core/vfs/WinResFS.cpp
     )
     target_compile_definitions(donut_core PUBLIC NOMINMAX _CRT_SECURE_NO_WARNINGS)
-endif()
-
-if(DONUT_WITH_LZ4)
-    target_link_libraries(donut_core lz4)
-    target_compile_definitions(donut_core PUBLIC DONUT_WITH_LZ4)
 endif()
 
 if(DONUT_WITH_MINIZ)
