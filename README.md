@@ -26,7 +26,6 @@ Optional (also included as git submodules but can be disabled through CMake vari
 * **NVRHI**, **ImGUI**, and **glfw** for rendering (`DONUT_WITH_NVRHI`)
 * **TaskFlow** for multi-threading (`DONUT_WITH_TASKFLOW`)
 * **tinyexr** to read EXR images (`DONUT_WITH_TINYEXR`)
-* **miniz** to mount zip archives (`DONUT_WITH_MINIZ`)
 
 ## Examples
 

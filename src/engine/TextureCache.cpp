@@ -60,18 +60,6 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <stb_image.h>
 #include <stb_image_write.h>
 
-
-#ifdef DONUT_WITH_MINIZ
-    #ifdef DONUT_WITH_TINYEXR
-        // tinyexr has its own copy of miniz, need to disable it
-        // if we have a separate integration to avoid linker errors
-        #define TINYEXR_USE_MINIZ 0
-    #endif // DONUT_WITH_TINYEXR
-
-    #include <miniz.h>
-
-#endif
-
 #ifdef DONUT_WITH_TINYEXR
 
     #if defined (_MSC_VER)

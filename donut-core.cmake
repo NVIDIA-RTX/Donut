@@ -49,13 +49,4 @@ if(WIN32)
     target_compile_definitions(donut_core PUBLIC NOMINMAX _CRT_SECURE_NO_WARNINGS)
 endif()
 
-if(DONUT_WITH_MINIZ)
-    target_link_libraries(donut_core miniz)
-    target_sources(donut_core PRIVATE
-        include/donut/core/vfs/ZipFile.h
-        src/core/vfs/ZipFile.cpp
-    )
-    target_compile_definitions(donut_core PUBLIC DONUT_WITH_MINIZ)
-endif()
-
 set_target_properties(donut_core PROPERTIES FOLDER Donut)

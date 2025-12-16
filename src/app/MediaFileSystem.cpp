@@ -25,9 +25,6 @@
 #include <donut/core/log.h>
 #include <donut/core/string_utils.h>
 #include <donut/core/vfs/TarFile.h>
-#ifdef DONUT_WITH_MINIZ
-#include <donut/core/vfs/ZipFile.h>
-#endif
 
 #include <unordered_set>
 
@@ -46,7 +43,7 @@ MediaFileSystem::MediaFileSystem(
 	if (nativeFS)
 	{
 		std::vector<std::string> packs;
-		if (mediafs->enumerateFiles("", { ".tar", ".zip", ".pkz" }, vfs::enumerate_to_vector(packs)) > 0)
+		if (mediafs->enumerateFiles("", { ".tar" }, vfs::enumerate_to_vector(packs)) > 0)
 		{
 			// sort the packs in reverse because want to search
 			// from 'highest revision' of a pack file down (ex: pack2.pkz is
@@ -66,16 +63,6 @@ MediaFileSystem::MediaFileSystem(
 						mounted = true;
 					}
 				}
-#ifdef DONUT_WITH_MINIZ
-				else if (string_utils::ends_with(fileName, ".zip") || string_utils::ends_with(fileName, ".pkz"))
-				{
-					if (auto packfs = std::make_shared<ZipFile>(filePath); packfs->isOpen())
-					{
-						m_FileSystems.push_back(packfs);
-						mounted = true;
-					}
-				}
-#endif // DONUT_WITH_MINIZ
 				else
 				{
 					log::warning("Cannot mount '%s': unsupported format. Skipping.", filePath.string().c_str());

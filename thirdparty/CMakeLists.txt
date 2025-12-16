@@ -66,8 +66,3 @@ if (DONUT_WITH_NVRHI AND NOT TARGET glfw)
     set_target_properties(glfw PROPERTIES FOLDER ${third_party_folder})
     set_target_properties(update_mappings PROPERTIES FOLDER ${third_party_folder})
 endif()
-
-if (DONUT_WITH_MINIZ AND NOT TARGET miniz)
-    add_subdirectory(miniz)
-    set_target_properties(miniz PROPERTIES FOLDER ${third_party_folder})
-endif()
