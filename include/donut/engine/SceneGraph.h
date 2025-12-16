@@ -591,6 +591,7 @@ namespace donut::engine
     {
     public:
         virtual ~SceneTypeFactory() = default;
+        virtual std::shared_ptr<SceneGraph> CreateGraph();
         virtual std::shared_ptr<SceneGraphLeaf> CreateLeaf(const std::string& type);
         virtual std::shared_ptr<Material> CreateMaterial();
         virtual std::shared_ptr<MeshInfo> CreateMesh();
