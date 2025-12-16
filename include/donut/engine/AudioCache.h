@@ -29,17 +29,15 @@
 #include <mutex>
 #include <string>
 
-#ifdef DONUT_WITH_TASKFLOW
-namespace tf
-{
-    class Executor;
-}
-#endif
-
 namespace donut::vfs
 {
     class IBlob;
     class IFileSystem;
+}
+
+namespace donut::engine
+{
+    class ThreadPool;
 }
 
 namespace donut::engine::audio
@@ -105,10 +103,8 @@ public:
     // Synchronous read
     std::shared_ptr<AudioData const> LoadFromFile(const std::filesystem::path & path);
 
-#ifdef DONUT_WITH_TASKFLOW
     // Asynchronous read
-    std::shared_ptr<AudioData const> LoadFromFileAsync(const std::filesystem::path & path, tf::Executor& executor);
-#endif
+    std::shared_ptr<AudioData const> LoadFromFileAsync(const std::filesystem::path & path, ThreadPool& threadPool);
 
 private:
 

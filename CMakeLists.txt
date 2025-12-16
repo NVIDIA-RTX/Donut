@@ -54,7 +54,6 @@ option(DONUT_EMBED_SHADER_PDBS "Embed shader PDBs with shader binary files" OFF)
 option(DONUT_WITH_STATIC_SHADERS "Build Donut with statically linked shaders" OFF)
 
 option(DONUT_WITH_AUDIO "Include Audio features (XAudio2)" OFF)
-option(DONUT_WITH_TASKFLOW "Include TaskFlow" ON)
 option(DONUT_WITH_TINYEXR "Include TinyEXR" ON)
 option(DONUT_WITH_UNIT_TESTS "Donut unit-tests (see CMake/CTest documentation)" OFF)
 

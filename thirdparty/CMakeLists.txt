@@ -52,11 +52,6 @@ if (DONUT_WITH_TINYEXR AND NOT TARGET tinyexr)
     target_include_directories(tinyexr INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/tinyexr)
 endif()
 
-if (DONUT_WITH_TASKFLOW AND NOT TARGET taskflow)
-    add_library(taskflow INTERFACE)
-    target_include_directories(taskflow INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/taskflow)
-endif()
-
 if (DONUT_WITH_NVRHI AND NOT TARGET glfw)
     option(GLFW_BUILD_EXAMPLES "" OFF)
     option(GLFW_BUILD_TESTS "" OFF)

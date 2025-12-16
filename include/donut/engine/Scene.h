@@ -29,11 +29,6 @@
 #include <mutex>
 #include <filesystem>
 
-namespace tf
-{
-    class Executor;
-}
-
 namespace Json
 {
     class Value;
@@ -51,6 +46,7 @@ namespace donut::engine
     class ShaderFactory;
     struct SceneImportResult;
     class TextureCache;
+    class ThreadPool;
     class DescriptorTableManager;
     class GltfImporter;
     
@@ -86,12 +82,12 @@ namespace donut::engine
         void LoadModelAsync(
             uint32_t index,
             const std::filesystem::path& fileName,
-            tf::Executor* executor);
+            ThreadPool* threadPool);
 
         void LoadModels(
             const Json::Value& modelList, 
             const std::filesystem::path& scenePath, 
-            tf::Executor* executor);
+            ThreadPool* threadPool);
 
         void LoadSceneGraph(const Json::Value& nodeList, const std::shared_ptr<SceneGraphNode>& parent);
         void LoadAnimations(const Json::Value& nodeList);
@@ -112,7 +108,7 @@ namespace donut::engine
         virtual nvrhi::BufferHandle CreateInstanceBuffer();
         virtual nvrhi::BufferHandle CreateMaterialConstantBuffer(const std::string& debugName);
 
-        virtual bool LoadCustomData(Json::Value& rootNode, tf::Executor* executor);
+        virtual bool LoadCustomData(Json::Value& rootNode, ThreadPool* threadPool);
     public:
         virtual ~Scene() = default;
 
@@ -137,7 +133,7 @@ namespace donut::engine
 
         bool Load(const std::filesystem::path& jsonFileName);
 
-        virtual bool LoadWithExecutor(const std::filesystem::path& sceneFileName, tf::Executor* executor);
+        virtual bool LoadWithThreadPool(const std::filesystem::path& sceneFileName, ThreadPool* threadPool);
 
         static const SceneLoadingStats& GetLoadingStats();
 

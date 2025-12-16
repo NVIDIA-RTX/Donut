@@ -22,15 +22,12 @@
 
 #include <donut/engine/AudioCache.h>
 
+#include <donut/engine/ThreadPool.h>
 #include <donut/core/vfs/VFS.h>
 #include <donut/core/log.h>
 
 #include <cstdint>
 #include <cstring>
-
-#ifdef DONUT_WITH_TASKFLOW
-#include <taskflow/taskflow.hpp>
-#endif
 
 using namespace donut;
 
@@ -213,15 +210,14 @@ std::shared_ptr<AudioData const> AudioCache::LoadFromFile(const std::filesystem:
     return audio;
 }
 
-#ifdef DONUT_WITH_TASKFLOW
-std::shared_ptr<AudioData const> AudioCache::LoadFromFileAsync(const std::filesystem::path & path, tf::Executor& executor)
+std::shared_ptr<AudioData const> AudioCache::LoadFromFileAsync(const std::filesystem::path & path, ThreadPool& threadPool)
 {
     std::shared_ptr<AudioData const> audio;
 
     if (findInCache(path, audio))
         return audio;
 
-    executor.async([this, &audio, path]()
+    threadPool.AddTask([this, &audio, path]()
     {
         if ((audio = loadAudioFile(path)))
         {
@@ -230,6 +226,5 @@ std::shared_ptr<AudioData const> AudioCache::LoadFromFileAsync(const std::filesy
     });
     return audio;
 }
-#endif
 
 } // namespace donut::engine::audio

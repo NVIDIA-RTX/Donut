@@ -24,7 +24,6 @@ Required (all included as git submodules):
 Optional (also included as git submodules but can be disabled through CMake variables):
 
 * **NVRHI**, **ImGUI**, and **glfw** for rendering (`DONUT_WITH_NVRHI`)
-* **TaskFlow** for multi-threading (`DONUT_WITH_TASKFLOW`)
 * **tinyexr** to read EXR images (`DONUT_WITH_TINYEXR`)
 
 ## Examples

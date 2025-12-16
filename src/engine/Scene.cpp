@@ -36,6 +36,7 @@ this software is released into the Public Domain.
 
 #include <donut/engine/Scene.h>
 #include <donut/engine/GltfImporter.h>
+#include <donut/engine/ThreadPool.h>
 #include <donut/core/json.h>
 #include <donut/core/log.h>
 #include <donut/core/string_utils.h>
@@ -54,11 +55,6 @@ this software is released into the Public Domain.
 #if DONUT_WITH_VULKAN
 #include "compiled_shaders/skinning_cs.spirv.h"
 #endif
-#endif
-
-
-#ifdef DONUT_WITH_TASKFLOW
-#include <taskflow/taskflow.hpp>
 #endif
 
 using namespace donut::math;
@@ -131,20 +127,12 @@ Scene::Scene(
 
 bool Scene::Load(const std::filesystem::path& jsonFileName)
 {
-#if DONUT_WITH_TASKFLOW
-    tf::Executor executor;
-    return LoadWithExecutor(jsonFileName, &executor);
-#else
-    return LoadWithExecutor(jsonFileName, nullptr);
-#endif
+    ThreadPool threadPool;
+    return LoadWithThreadPool(jsonFileName, &threadPool);
 }
 
-bool Scene::LoadWithExecutor(const std::filesystem::path& sceneFileName, tf::Executor* executor)
+bool Scene::LoadWithThreadPool(const std::filesystem::path& sceneFileName, ThreadPool* threadPool)
 {
-#ifndef DONUT_WITH_TASKFLOW
-    assert(!executor);
-#endif
-    
     g_LoadingStats.ObjectsLoaded = 0;
     g_LoadingStats.ObjectsTotal = 0;
     
@@ -154,12 +142,10 @@ bool Scene::LoadWithExecutor(const std::filesystem::path& sceneFileName, tf::Exe
     {
         ++g_LoadingStats.ObjectsTotal;
         m_Models.resize(1);
-        LoadModelAsync(0, sceneFileName, executor);
+        LoadModelAsync(0, sceneFileName, threadPool);
 
-#ifdef DONUT_WITH_TASKFLOW
-        if (executor)
-            executor->wait_for_all();
-#endif
+        if (threadPool)
+            threadPool->WaitForTasks();
 
         auto modelResult = m_Models[0];
         if (!modelResult.rootNode)
@@ -181,10 +167,10 @@ bool Scene::LoadWithExecutor(const std::filesystem::path& sceneFileName, tf::Exe
 
         if (documentRoot.isObject())
         {
-            if (!LoadCustomData(documentRoot, executor))
+            if (!LoadCustomData(documentRoot, threadPool))
                 return false;
 
-            LoadModels(documentRoot["models"], scenePath, executor);
+            LoadModels(documentRoot["models"], scenePath, threadPool);
             LoadSceneGraph(documentRoot["graph"], rootNode);
             LoadAnimations(documentRoot["animations"]);
         }
@@ -201,24 +187,22 @@ bool Scene::LoadWithExecutor(const std::filesystem::path& sceneFileName, tf::Exe
 void Scene::LoadModelAsync(
     uint32_t index,
     const std::filesystem::path& fileName,
-    tf::Executor* executor)
+    ThreadPool* threadPool)
 {   
-#ifdef DONUT_WITH_TASKFLOW
-    if (executor)
+    if (threadPool)
     {
-        executor->async([this, index, executor, fileName]()
-            {
-                SceneImportResult result;
-                m_GltfImporter->Load(fileName, *m_TextureCache, g_LoadingStats, executor, result);
-                ++g_LoadingStats.ObjectsLoaded;
-                m_Models[index] = result;
-            });
+        threadPool->AddTask([this, index, threadPool, fileName]()
+        {
+            SceneImportResult result;
+            m_GltfImporter->Load(fileName, *m_TextureCache, g_LoadingStats, threadPool, result);
+            ++g_LoadingStats.ObjectsLoaded;
+            m_Models[index] = result;
+        });
     }
     else
-#endif // DONUT_WITH_TASKFLOW
     {
         SceneImportResult result;
-        m_GltfImporter->Load(fileName, *m_TextureCache, g_LoadingStats, executor, result);
+        m_GltfImporter->Load(fileName, *m_TextureCache, g_LoadingStats, threadPool, result);
         ++g_LoadingStats.ObjectsLoaded;
         m_Models[index] = result;
     }
@@ -227,7 +211,7 @@ void Scene::LoadModelAsync(
 void Scene::LoadModels(
     const Json::Value& modelList,
     const std::filesystem::path& scenePath,
-    tf::Executor* executor)
+    ThreadPool* threadPool)
 {
     if (!modelList.isArray())
     {
@@ -242,15 +226,13 @@ void Scene::LoadModels(
 
         std::filesystem::path fileName = scenePath / std::filesystem::path(model.asString());
 
-        LoadModelAsync(index, fileName, executor);
+        LoadModelAsync(index, fileName, threadPool);
 
         ++index;
     }
 
-#ifdef DONUT_WITH_TASKFLOW
-    if (executor)
-        executor->wait_for_all();
-#endif
+    if (threadPool)
+        threadPool->WaitForTasks();
 }
 
 void Scene::LoadSceneGraph(const Json::Value& nodeList, const std::shared_ptr<SceneGraphNode>& parent)
@@ -592,7 +574,7 @@ void Scene::LoadAnimations(const Json::Value& nodeList)
     }
 }
 
-bool Scene::LoadCustomData(Json::Value& rootNode, tf::Executor* executor)
+bool Scene::LoadCustomData(Json::Value& rootNode, ThreadPool* threadPool)
 {
     // Reserved for derived classes
     return true;

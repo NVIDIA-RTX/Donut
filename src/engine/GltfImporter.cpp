@@ -642,7 +642,7 @@ bool GltfImporter::Load(
     const std::filesystem::path& fileName,
     TextureCache& textureCache,
     SceneLoadingStats& stats,
-    tf::Executor* executor,
+    ThreadPool* threadPool,
     SceneImportResult& result) const
 {
     // Set this to 'true' if you need to fix broken tangents in a model.
@@ -804,7 +804,7 @@ bool GltfImporter::Load(
 
     std::unordered_map<const cgltf_image*, std::shared_ptr<LoadedTexture>> imageCache;
 
-    auto load_image = [&imageCache, &textureCache, executor, &load_image_data]
+    auto load_image = [&imageCache, &textureCache, threadPool, &load_image_data]
         (const cgltf_image* image, bool sRGB, bool searchForDDS)
     {
         auto it = imageCache.find(image);
@@ -816,22 +816,18 @@ bool GltfImporter::Load(
 
         if (textureSource.data)
         {
-#ifdef DONUT_WITH_TASKFLOW
-            if (executor)
+            if (threadPool)
                 loadedTexture = textureCache.LoadTextureFromMemoryAsync(textureSource.data->buffer,
-                    textureSource.data->name, textureSource.data->mimeType, sRGB, *executor);
+                    textureSource.data->name, textureSource.data->mimeType, sRGB, *threadPool);
             else
-#endif
                 loadedTexture = textureCache.LoadTextureFromMemoryDeferred(textureSource.data->buffer,
                     textureSource.data->name, textureSource.data->mimeType, sRGB);
         }
         else if (!textureSource.path.empty())
         {
-#ifdef DONUT_WITH_TASKFLOW
-            if (executor)
-                loadedTexture = textureCache.LoadTextureFromFileAsync(textureSource.path, sRGB, *executor);
+            if (threadPool)
+                loadedTexture = textureCache.LoadTextureFromFileAsync(textureSource.path, sRGB, *threadPool);
             else
-#endif
                 loadedTexture = textureCache.LoadTextureFromFileDeferred(textureSource.path, sRGB);
         }
 

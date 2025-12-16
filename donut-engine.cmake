@@ -38,11 +38,6 @@ target_link_libraries(donut_engine donut_core nvrhi jsoncpp_static stb cgltf Sha
 
 add_dependencies(donut_engine donut_shaders)
 
-if (DONUT_WITH_TASKFLOW)
-    target_link_libraries(donut_engine taskflow)
-    target_compile_definitions(donut_engine PUBLIC DONUT_WITH_TASKFLOW)
-endif()
-
 if(WIN32)
     target_compile_definitions(donut_engine PUBLIC NOMINMAX)
 endif()

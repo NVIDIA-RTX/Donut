@@ -33,13 +33,6 @@
 #include <shared_mutex>
 #include <queue>
 
-#ifdef DONUT_WITH_TASKFLOW
-namespace tf
-{
-    class Executor;
-}
-#endif
-
 namespace donut::vfs
 {
     class IBlob;
@@ -49,6 +42,7 @@ namespace donut::vfs
 namespace donut::engine
 {
     class CommonRenderPasses;
+    class ThreadPool;
 
     struct TextureSubresourceData
     {
@@ -141,12 +135,11 @@ namespace donut::engine
             const std::filesystem::path& path,
             bool sRGB);
 
-#ifdef DONUT_WITH_TASKFLOW
         // Asynchronous read and decode, deferred upload and mip generation (in the ProcessRenderingThreadCommands queue).
         virtual std::shared_ptr<LoadedTexture> LoadTextureFromFileAsync(
             const std::filesystem::path& path,
             bool sRGB,
-            tf::Executor& executor);
+            ThreadPool& threadPool);
 
         // Same as LoadTextureFromFileAsync, but using a memory blob and MIME type instead of file name, and uncached.
         virtual std::shared_ptr<LoadedTexture> LoadTextureFromMemoryAsync(
@@ -154,8 +147,7 @@ namespace donut::engine
             const std::string& name,
             const std::string& mimeType,
             bool sRGB,
-            tf::Executor& executor);
-#endif
+            ThreadPool& threadPool);
 
         // Same as LoadTextureFromFile, but using a memory blob and MIME type instead of file name, and uncached.
         virtual std::shared_ptr<LoadedTexture> LoadTextureFromMemory(

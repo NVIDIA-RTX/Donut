@@ -4,7 +4,7 @@ This document describes the structure of scene files that can be loaded by Donut
 
 The scene loader looks at the file extension, and if it's `.gltf` or `.glb`, loads that model directly, otherwise treats the input as the custom scene description documented here. So, when Donut-based applications take a scene path on the command line, usually that scene can be either a single glTF model or this scene description.
 
-The loader implementation can be found in [`Scene.cpp`](../src/engine/Scene.cpp) inside the `LoadWithExecutor` function and other functions called from there.
+The loader implementation can be found in [`Scene.cpp`](../src/engine/Scene.cpp) inside the `LoadWithThreadPool` function and other functions called from there.
 
 ## 1. Top-Level Structure
 

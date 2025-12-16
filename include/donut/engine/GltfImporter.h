@@ -36,14 +36,10 @@ namespace donut::engine
     struct SceneImportResult;
     struct SceneLoadingStats;
     class TextureCache;
+    class ThreadPool;
     class SceneGraphNode;
     class SceneTypeFactory;
     class SceneGraphAnimation;
-}
-
-namespace tf
-{
-    class Executor;
 }
 
 namespace donut::engine
@@ -61,7 +57,7 @@ namespace donut::engine
             const std::filesystem::path& fileName,
             TextureCache& textureCache,
             SceneLoadingStats& stats,
-            tf::Executor* executor,
+            ThreadPool* threadPool,
             SceneImportResult& result) const;
     };
 }

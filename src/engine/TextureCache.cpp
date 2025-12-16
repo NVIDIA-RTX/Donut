@@ -50,12 +50,9 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <donut/engine/CommonRenderPasses.h>
 #include <donut/engine/ConsoleObjects.h>
 #include <donut/engine/DDSFile.h>
+#include <donut/engine/ThreadPool.h>
 #include <donut/core/vfs/VFS.h>
 #include <donut/core/log.h>
-
-#ifdef DONUT_WITH_TASKFLOW
-#include <taskflow/taskflow.hpp>
-#endif
 
 #include <stb_image.h>
 #include <stb_image_write.h>
@@ -546,11 +543,10 @@ std::shared_ptr<LoadedTexture> TextureCache::LoadTextureFromFileDeferred(
     return texture;
 }
 
-#ifdef DONUT_WITH_TASKFLOW
 std::shared_ptr<LoadedTexture> TextureCache::LoadTextureFromFileAsync(
     const std::filesystem::path& path,
     bool sRGB,
-    tf::Executor& executor)
+    ThreadPool& threadPool)
 {
     std::shared_ptr<TextureData> texture;
 
@@ -560,7 +556,7 @@ std::shared_ptr<LoadedTexture> TextureCache::LoadTextureFromFileAsync(
     texture->forceSRGB = sRGB;
     texture->path = path.generic_string();
 
-    executor.async([this, texture, path]()
+    threadPool.AddTask([this, texture, path]()
     {
         auto fileData = ReadTextureFile(path);
         if (fileData)
@@ -586,7 +582,7 @@ std::shared_ptr<LoadedTexture> TextureCache::LoadTextureFromMemoryAsync(
     const std::string& name,
     const std::string& mimeType,
     bool sRGB,
-    tf::Executor& executor)
+    ThreadPool& threadPool)
 {
     std::shared_ptr<TextureData> texture = CreateTextureData();
     
@@ -594,7 +590,7 @@ std::shared_ptr<LoadedTexture> TextureCache::LoadTextureFromMemoryAsync(
     texture->path = name;
     texture->mimeType = mimeType;
 
-    executor.async([this, texture, data, mimeType]()
+    threadPool.AddTask([this, texture, data, mimeType]()
         {
             if (FillTextureData(data, texture, "", mimeType))
             {
@@ -610,7 +606,6 @@ std::shared_ptr<LoadedTexture> TextureCache::LoadTextureFromMemoryAsync(
 
     return texture;
 }
-#endif
 
 std::shared_ptr<LoadedTexture> TextureCache::LoadTextureFromMemory(
     const std::shared_ptr<vfs::IBlob>& data,
