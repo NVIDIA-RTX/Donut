@@ -53,7 +53,7 @@ namespace donut::math
 	template <typename T, int n>
 	struct vector
 	{
-		cassert(n > 4);
+		static_assert(n > 4);
 		T m_data[n];
 
         vector(T a) 

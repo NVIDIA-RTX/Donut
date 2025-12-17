@@ -55,8 +55,8 @@ namespace donut::math
     template <typename T, int rows, int cols>
     struct matrix
     {
-        cassert(rows > 1);
-        cassert(cols > 1);
+        static_assert(rows > 1);
+        static_assert(cols > 1);
 
         T m_data[rows*cols];
 

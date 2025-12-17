@@ -31,7 +31,7 @@ namespace donut::math
     template <typename T, int n>
     struct box
     {
-        cassert(n > 1);
+        static_assert(n > 1);
         static constexpr int numCorners = 1 << n;
 
         vector<T, n> m_mins, m_maxs;

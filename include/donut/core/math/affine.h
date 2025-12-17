@@ -29,7 +29,7 @@ namespace donut::math
 	template <typename T, int n>
 	struct affine
 	{
-		cassert(n > 1);
+		static_assert(n > 1);
 
 		matrix<T, n, n>	m_linear;
 		vector<T, n>	m_translation;
