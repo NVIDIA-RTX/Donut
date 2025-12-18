@@ -41,7 +41,7 @@ this software is released into the Public Domain.
 #include <donut/core/log.h>
 #include <donut/core/string_utils.h>
 #include <nvrhi/common/misc.h>
-#include <json/value.h>
+#include <json/json-forwards.h>
 
 #include "donut/engine/ShaderFactory.h"
 

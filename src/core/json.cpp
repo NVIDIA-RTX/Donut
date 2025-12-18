@@ -37,7 +37,7 @@ this software is released into the Public Domain.
 #include <donut/core/json.h>
 #include <donut/core/vfs/VFS.h>
 #include <donut/core/log.h>
-#include <json/reader.h>
+#include <json/json-forwards.h>
 
 using namespace donut::math;
 using namespace donut::vfs;

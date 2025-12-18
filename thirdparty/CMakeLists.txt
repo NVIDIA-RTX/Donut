@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2014-2021, NVIDIA CORPORATION. All rights reserved.
+# Copyright (c) 2014-2025, NVIDIA CORPORATION. All rights reserved.
 #
 # Permission is hereby granted, free of charge, to any person obtaining a
 # copy of this software and associated documentation files (the "Software"),
@@ -31,7 +31,10 @@ if (DONUT_WITH_NVRHI AND NOT TARGET imgui)
 endif()
 
 if (NOT TARGET jsoncpp_static)
-    include(jsoncpp.cmake)
+    add_library(jsoncpp_static)
+    set(jsoncpp_path "${CMAKE_CURRENT_SOURCE_DIR}/jsoncpp-amalgam")
+    target_include_directories(jsoncpp_static PUBLIC "${jsoncpp_path}")
+    target_sources(jsoncpp_static PRIVATE "${jsoncpp_path}/jsoncpp.cpp")
     set_target_properties(jsoncpp_static PROPERTIES FOLDER ${third_party_folder})
 endif()
 
