@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2014-2021, NVIDIA CORPORATION. All rights reserved.
+# Copyright (c) 2014-2026, NVIDIA CORPORATION. All rights reserved.
 #
 # Permission is hereby granted, free of charge, to any person obtaining a
 # copy of this software and associated documentation files (the "Software"),
@@ -35,6 +35,12 @@ if (MSVC)
     string(APPEND CMAKE_CXX_FLAGS " /W3")
     if (NOT (CMAKE_CXX_COMPILER_ID MATCHES "Clang"))
         string(APPEND CMAKE_CXX_FLAGS " /MP")
+    endif()
+endif()
+
+if (CMAKE_SYSTEM_PROCESSOR MATCHES "AMD64" OR CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64")
+    if (CMAKE_CXX_COMPILER_ID MATCHES "GNU" OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        string(APPEND CMAKE_CXX_FLAGS " -mf16c")
     endif()
 endif()
 

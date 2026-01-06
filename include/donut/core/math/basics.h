@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2014-2021, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2014-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -65,7 +65,7 @@ namespace donut::math
     constexpr T square(T a) { return a*a; }
 
 	// Equality test with epsilon
-    constexpr bool isnear(float a, float b, float eps = dm::epsilon)
+    constexpr bool isnear(float a, float b, float eps = epsilon)
 	{ return (abs(b - a) < eps); }
 
 	// Test for finiteness

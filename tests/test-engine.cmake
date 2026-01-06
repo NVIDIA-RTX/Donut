@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2014-2021, NVIDIA CORPORATION. All rights reserved.
+# Copyright (c) 2014-2026, NVIDIA CORPORATION. All rights reserved.
 #
 # Permission is hereby granted, free of charge, to any person obtaining a
 # copy of this software and associated documentation files (the "Software"),
@@ -28,7 +28,7 @@ foreach(test_src ${donut_engine_tests})
     #message(STATUS "Added test ${test_name}")
 
     add_executable("${test_name}" "${test_src}")
-    target_link_libraries("${test_name}" donut_engine donut_core donut_tests_utils)
+    target_link_libraries("${test_name}" donut_app donut_engine donut_core donut_tests_utils)
 
     add_dependencies(donut_all_tests "${test_name}")
 

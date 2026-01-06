@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2014-2021, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2014-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -21,7 +21,9 @@
 */
 
 #pragma once
+
 #include <cmath>
+#include "basics.h"
 
 namespace donut::math
 {
@@ -312,29 +314,29 @@ namespace donut::math
 	}
 
 	template <typename T, int n>
-	vector<bool, n> isnear(vector<T, n> const & a, vector<T, n> const & b, float epsilon = dm::epsilon)
+	vector<bool, n> isnear(vector<T, n> const & a, vector<T, n> const & b, float eps = epsilon)
 	{
 		vector<bool, n> result;
 		for (int i = 0; i < n; ++i)
-			result[i] = isnear(a[i], b[i], epsilon);
+			result[i] = isnear(a[i], b[i], eps);
 		return result;
 	}
 
 	template <typename T, int n>
-	vector<bool, n> isnear(vector<T, n> const & a, T b, float epsilon = dm::epsilon)
+	vector<bool, n> isnear(vector<T, n> const & a, T b, float eps = epsilon)
 	{
 		vector<bool, n> result;
 		for (int i = 0; i < n; ++i)
-			result[i] = isnear(a[i], b, epsilon);
+			result[i] = isnear(a[i], b, eps);
 		return result;
 	}
 
 	template <typename T, int n>
-	vector<bool, n> isnear(T a, vector<T, n> const & b, float epsilon = dm::epsilon)
+	vector<bool, n> isnear(T a, vector<T, n> const & b, float eps = epsilon)
 	{
 		vector<bool, n> result;
 		for (int i = 0; i < n; ++i)
-			result[i] = isnear(a, b[i], epsilon);
+			result[i] = isnear(a, b[i], eps);
 		return result;
 	}
 
