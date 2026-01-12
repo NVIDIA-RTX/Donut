@@ -867,62 +867,36 @@ bool GltfImporter::Load(
                 loadedTexture = std::make_shared<LoadedTexture>();
             }
 
-            std::vector<TextureSwizzle> convertedOptions;
+            // Convert the swizzle options from glTF structures to TextureSwizzle and merge them into the
+            // existing texture object. Merge means that if the texture object already has a particular swizzle option,
+            // it won't be inserted again; if this option is new, it will be added to the texture object.
+            // This behavior is useful when materials combine textures in different ways, and the same texture
+            // ends up being used by multiple materials, but their baked multi-channel representations are different.
+            size_t const existingOptionCount = loadedTexture->swizzleOptions.size();
             for (auto const& swizzleOption : extensions.swizzleOptions)
             {
-                auto& dst = convertedOptions.emplace_back();
-                dst.source = load_image_data(swizzleOption.source, false);
-                dst.numChannels = swizzleOption.numChannels;
+                TextureSwizzle convertedOption;
+                convertedOption.source = load_image_data(swizzleOption.source, false);
+                convertedOption.numChannels = swizzleOption.numChannels;
                 for (int ch = 0; ch < swizzleOption.numChannels; ++ch)
                 {
-                    dst.channels[ch] = swizzleOption.channels[ch];
+                    convertedOption.channels[ch] = swizzleOption.channels[ch];
                 }
-            }
 
-            if (!loadedTexture->swizzleOptions.empty())
-            {
-                if (loadedTexture->swizzleOptions.size() == convertedOptions.size())
+                bool found = false;
+                for (size_t i = 0; i < existingOptionCount; ++i)
                 {
-                    for (size_t optionIdx = 0; optionIdx < loadedTexture->swizzleOptions.size(); ++optionIdx)
+                    if (loadedTexture->swizzleOptions[i].source == convertedOption.source)
                     {
-                        // Check if the sources match
-                        
-                        if (loadedTexture->swizzleOptions[optionIdx].source != convertedOptions[optionIdx].source)
-                        {
-                            log::warning("Different glTF texture objects are using the same image '%s' but different "
-                                " swizzle sources '%s' and '%s'. Ignoring the second swizzle definition.",
-                                loadedTexture->path.c_str(),
-                                loadedTexture->swizzleOptions[optionIdx].source.ToString().c_str(),
-                                convertedOptions[optionIdx].source.ToString().c_str());
-                            break;
-                        }
-
-                        // Merge the new definition and swizzle pattern into the existing one
-
-                        loadedTexture->swizzleOptions[optionIdx].numChannels = std::max(
-                            convertedOptions[optionIdx].numChannels,
-                            loadedTexture->swizzleOptions[optionIdx].numChannels);
-
-                        for (int ch = 0; ch < convertedOptions[optionIdx].numChannels; ++ch)
-                        {
-                            if (convertedOptions[optionIdx].channels[ch] >= 0)
-                            {
-                                loadedTexture->swizzleOptions[optionIdx].channels[ch] =
-                                    convertedOptions[optionIdx].channels[ch];
-                            }
-                        }
+                        found = true;
+                        break;
                     }
                 }
-                else
+
+                if (!found)
                 {
-                    log::warning("Different glTF texture objects are using the same image '%s' but different "
-                        " numbers of swizzle options. Ignoring the second swizzle definition.",
-                        loadedTexture->path.c_str());
+                    loadedTexture->swizzleOptions.push_back(std::move(convertedOption));
                 }
-            }
-            else
-            {
-                loadedTexture->swizzleOptions = std::move(convertedOptions);
             }
         }
 

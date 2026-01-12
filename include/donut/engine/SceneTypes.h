@@ -99,7 +99,7 @@ namespace donut::engine
     };
 
     // Describes a swizzle operation that is used to derive a texture view from a potentially multichannel image.
-    // Donut doesn't support multichannel image operations, and swizzle implementatoin is left up to applications.
+    // Donut doesn't support multichannel image operations, and swizzle implementation is left up to applications.
     struct TextureSwizzle
     {
         // Image to extract channels from
@@ -127,7 +127,7 @@ namespace donut::engine
         std::string path;
         std::string mimeType;
 
-        // Options to constuct the texture from a multichannel image, as provided by the glTF asset
+        // Options to construct the texture from a multichannel image, as provided by the glTF asset
         // through the NV_texture_swizzle extension. Applications should choose one of the options that
         // they're compatible with, or fallback to the regular texture.
         std::vector<TextureSwizzle> swizzleOptions;
