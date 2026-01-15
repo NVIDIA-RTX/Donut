@@ -572,7 +572,6 @@ bool DeviceManager_VK::createDevice()
     bool accelStructSupported = false;
     bool rayPipelineSupported = false;
     bool rayQuerySupported = false;
-    bool meshletsSupported = false;
     bool vrsSupported = false;
     bool interlockSupported = false;
     bool barycentricSupported = false;
@@ -582,6 +581,7 @@ bool DeviceManager_VK::createDevice()
     bool clusterAccelerationStructureSupported = false;
     bool mutableDescriptorTypeSupported = false;
     bool linearSweptSpheresSupported = false;
+    bool meshShaderSupported = false;
 
     log::message(m_DeviceParams.infoLogSeverity, "Enabled Vulkan device extensions:");
     for (const auto& ext : enabledExtensions.device)
@@ -594,8 +594,6 @@ bool DeviceManager_VK::createDevice()
             rayPipelineSupported = true;
         else if (ext == VK_KHR_RAY_QUERY_EXTENSION_NAME)
             rayQuerySupported = true;
-        else if (ext == VK_NV_MESH_SHADER_EXTENSION_NAME)
-            meshletsSupported = true;
         else if (ext == VK_KHR_FRAGMENT_SHADING_RATE_EXTENSION_NAME)
             vrsSupported = true;
         else if (ext == VK_EXT_FRAGMENT_SHADER_INTERLOCK_EXTENSION_NAME)
@@ -616,6 +614,8 @@ bool DeviceManager_VK::createDevice()
             mutableDescriptorTypeSupported = true;
         else if (ext == VK_NV_RAY_TRACING_LINEAR_SWEPT_SPHERES_EXTENSION_NAME)
             linearSweptSpheresSupported = true;
+        else if (ext == VK_EXT_MESH_SHADER_EXTENSION_NAME)
+            meshShaderSupported = true;
     }
 
 #define APPEND_EXTENSION(condition, desc) if (condition) { (desc).pNext = pNext; pNext = &(desc); }  // NOLINT(cppcoreguidelines-macro-usage)
@@ -628,12 +628,15 @@ bool DeviceManager_VK::createDevice()
     auto maintenance4Features = vk::PhysicalDeviceMaintenance4Features();
     // Determine support for aftermath
     auto aftermathPhysicalFeatures = vk::PhysicalDeviceDiagnosticsConfigFeaturesNV();
+    // Determine support for mesh and task shaders
+    auto meshShaderFeatures = vk::PhysicalDeviceMeshShaderFeaturesEXT();
 
     // Put the user-provided extension structure at the end of the chain
     pNext = m_DeviceParams.physicalDeviceFeatures2Extensions;
     APPEND_EXTENSION(true, bufferDeviceAddressFeatures);
     APPEND_EXTENSION(maintenance4Supported, maintenance4Features);
     APPEND_EXTENSION(aftermathSupported, aftermathPhysicalFeatures);
+    APPEND_EXTENSION(meshShaderSupported, meshShaderFeatures);
 
     physicalDeviceFeatures2.pNext = pNext;
     m_VulkanPhysicalDevice.getFeatures2(&physicalDeviceFeatures2);
@@ -668,9 +671,6 @@ bool DeviceManager_VK::createDevice()
         .setRayTraversalPrimitiveCulling(true);
     auto rayQueryFeatures = vk::PhysicalDeviceRayQueryFeaturesKHR()
         .setRayQuery(true);
-    auto meshletFeatures = vk::PhysicalDeviceMeshShaderFeaturesNV()
-        .setTaskShader(true)
-        .setMeshShader(true);
     auto interlockFeatures = vk::PhysicalDeviceFragmentShaderInterlockFeaturesEXT()
         .setFragmentShaderPixelInterlock(true);
     auto barycentricFeatures = vk::PhysicalDeviceFragmentShaderBarycentricFeaturesKHR()
@@ -703,7 +703,6 @@ bool DeviceManager_VK::createDevice()
     APPEND_EXTENSION(accelStructSupported, accelStructFeatures)
     APPEND_EXTENSION(rayPipelineSupported, rayPipelineFeatures)
     APPEND_EXTENSION(rayQuerySupported, rayQueryFeatures)
-    APPEND_EXTENSION(meshletsSupported, meshletFeatures)
     APPEND_EXTENSION(vrsSupported, vrsFeatures)
     APPEND_EXTENSION(interlockSupported, interlockFeatures)
     APPEND_EXTENSION(barycentricSupported, barycentricFeatures)
@@ -713,6 +712,14 @@ bool DeviceManager_VK::createDevice()
     APPEND_EXTENSION(physicalDeviceProperties.apiVersion < VK_API_VERSION_1_3 && maintenance4Supported, maintenance4Features)
     APPEND_EXTENSION(physicalDeviceProperties.apiVersion < VK_API_VERSION_1_3, dynamicRenderingFeatures)
     APPEND_EXTENSION(linearSweptSpheresSupported, linearSweptSpheresFeatures)
+    APPEND_EXTENSION(meshShaderSupported, meshShaderFeatures)
+    
+    // These mesh shader features require other device features to be enabled:
+    // - VkPhysicalDeviceMultiviewFeaturesKHR::multiview
+    // - VkPhysicalDeviceFragmentShadingRateFeaturesKHR::primitiveFragmentShadingRate
+    // Disable the mesh shader features by default, apps can override this if needed.
+    meshShaderFeatures.multiviewMeshShader = false;
+    meshShaderFeatures.primitiveFragmentShadingRateMeshShader = false;
     
 #if DONUT_WITH_AFTERMATH
     if (aftermathPhysicalFeatures.diagnosticsConfig && m_DeviceParams.enableAftermath)
