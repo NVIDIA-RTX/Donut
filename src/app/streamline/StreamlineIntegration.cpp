@@ -182,9 +182,10 @@ static bool successCheck(sl::Result result, const char* location)
         return true;
 
     auto a = errors.find(result);
-    if (warnings.find(result) != warnings.end())
+    auto w = warnings.find(result);
+    if (w != warnings.end())
     {
-        logFunctionCallback(sl::LogType::eWarn, ("Warning: " + a->second + (location == nullptr ? "" : (" encountered in " + std::string(location)))).c_str());
+        logFunctionCallback(sl::LogType::eWarn, ("Warning: " + w->second + (location == nullptr ? "" : (" encountered in " + std::string(location)))).c_str());
         return true;
     } 
     else if (a != errors.end())
