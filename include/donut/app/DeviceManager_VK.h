@@ -182,9 +182,7 @@ protected:
         // layers
         { },
         // device
-        { 
-            VK_KHR_MAINTENANCE1_EXTENSION_NAME
-        },
+        { },
     };
 
     // optional extensions
@@ -202,9 +200,7 @@ protected:
             VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME,
             VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME,
             VK_KHR_FRAGMENT_SHADING_RATE_EXTENSION_NAME,
-            VK_KHR_MAINTENANCE_4_EXTENSION_NAME,
             VK_KHR_SWAPCHAIN_MUTABLE_FORMAT_EXTENSION_NAME,
-            VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME,
             VK_EXT_MESH_SHADER_EXTENSION_NAME,
             VK_EXT_MUTABLE_DESCRIPTOR_TYPE_EXTENSION_NAME,
 #if DONUT_WITH_AFTERMATH

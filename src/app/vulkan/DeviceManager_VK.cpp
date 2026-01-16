@@ -73,6 +73,8 @@ static constexpr uint32_t kComputeQueueIndex = 0;
 static constexpr uint32_t kGraphicsQueueIndex = 0;
 static constexpr uint32_t kPresentQueueIndex = 0;
 static constexpr uint32_t kTransferQueueIndex = 0;
+static constexpr uint32_t kMinimumVulkanVersion = VK_API_VERSION_1_3;
+
 
 static std::vector<const char *> stringSetToVector(const std::unordered_set<std::string>& set)
 {
@@ -213,14 +215,12 @@ bool DeviceManager_VK::createInstance()
         return false;
     }
 
-    const uint32_t minimumVulkanVersion = VK_MAKE_API_VERSION(0, 1, 3, 0);
-
     // Check if the Vulkan API version is sufficient.
-    if (applicationInfo.apiVersion < minimumVulkanVersion)
+    if (applicationInfo.apiVersion < kMinimumVulkanVersion)
     {
         log::error("The Vulkan API version supported on the system (%d.%d.%d) is too low, at least %d.%d.%d is required.",
             VK_API_VERSION_MAJOR(applicationInfo.apiVersion), VK_API_VERSION_MINOR(applicationInfo.apiVersion), VK_API_VERSION_PATCH(applicationInfo.apiVersion),
-            VK_API_VERSION_MAJOR(minimumVulkanVersion), VK_API_VERSION_MINOR(minimumVulkanVersion), VK_API_VERSION_PATCH(minimumVulkanVersion));
+            VK_API_VERSION_MAJOR(kMinimumVulkanVersion), VK_API_VERSION_MINOR(kMinimumVulkanVersion), VK_API_VERSION_PATCH(kMinimumVulkanVersion));
         return false;
     }
 
@@ -347,9 +347,16 @@ bool DeviceManager_VK::pickPhysicalDevice()
             deviceIsGood = false;
         }
 
+        if (prop.apiVersion < kMinimumVulkanVersion)
+        {
+            errorStream << std::endl << "  - does not support Vulkan " <<
+                VK_API_VERSION_MAJOR(kMinimumVulkanVersion) << "." << VK_API_VERSION_MINOR(kMinimumVulkanVersion);
+            deviceIsGood = false;
+        }
+
         vk::PhysicalDeviceFeatures2 deviceFeatures2{};
-        vk::PhysicalDeviceDynamicRenderingFeatures dynamicRenderingFeatures{};
-        deviceFeatures2.pNext = &dynamicRenderingFeatures;
+        vk::PhysicalDeviceVulkan13Features vulkan13Features{};
+        deviceFeatures2.pNext = &vulkan13Features;
 
         dev.getFeatures2(&deviceFeatures2);
         if (!deviceFeatures2.features.samplerAnisotropy)
@@ -363,9 +370,14 @@ bool DeviceManager_VK::pickPhysicalDevice()
             errorStream << std::endl << "  - does not support textureCompressionBC";
             deviceIsGood = false;
         }
-        if (!dynamicRenderingFeatures.dynamicRendering)
+        if (!vulkan13Features.dynamicRendering)
         {
             errorStream << std::endl << "  - does not support dynamicRendering";
+            deviceIsGood = false;
+        }
+        if (!vulkan13Features.synchronization2)
+        {
+            errorStream << std::endl << "  - does not support synchronization2";
             deviceIsGood = false;
         }
 
@@ -575,8 +587,6 @@ bool DeviceManager_VK::createDevice()
     bool vrsSupported = false;
     bool interlockSupported = false;
     bool barycentricSupported = false;
-    bool synchronization2Supported = false;
-    bool maintenance4Supported = false;
     bool aftermathSupported = false;
     bool clusterAccelerationStructureSupported = false;
     bool mutableDescriptorTypeSupported = false;
@@ -600,10 +610,6 @@ bool DeviceManager_VK::createDevice()
             interlockSupported = true;
         else if (ext == VK_KHR_FRAGMENT_SHADER_BARYCENTRIC_EXTENSION_NAME)
             barycentricSupported = true;
-        else if (ext == VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME)
-            synchronization2Supported = true;
-        else if (ext == VK_KHR_MAINTENANCE_4_EXTENSION_NAME)
-            maintenance4Supported = true;
         else if (ext == VK_KHR_SWAPCHAIN_MUTABLE_FORMAT_EXTENSION_NAME)
             m_SwapChainMutableFormatSupported = true;
         else if (ext == VK_NV_DEVICE_DIAGNOSTICS_CONFIG_EXTENSION_NAME)
@@ -624,8 +630,6 @@ bool DeviceManager_VK::createDevice()
     vk::PhysicalDeviceFeatures2 physicalDeviceFeatures2;
     // Determine support for Buffer Device Address, the Vulkan 1.2 way
     auto bufferDeviceAddressFeatures = vk::PhysicalDeviceBufferDeviceAddressFeatures();
-    // Determine support for maintenance4
-    auto maintenance4Features = vk::PhysicalDeviceMaintenance4Features();
     // Determine support for aftermath
     auto aftermathPhysicalFeatures = vk::PhysicalDeviceDiagnosticsConfigFeaturesNV();
     // Determine support for mesh and task shaders
@@ -634,7 +638,6 @@ bool DeviceManager_VK::createDevice()
     // Put the user-provided extension structure at the end of the chain
     pNext = m_DeviceParams.physicalDeviceFeatures2Extensions;
     APPEND_EXTENSION(true, bufferDeviceAddressFeatures);
-    APPEND_EXTENSION(maintenance4Supported, maintenance4Features);
     APPEND_EXTENSION(aftermathSupported, aftermathPhysicalFeatures);
     APPEND_EXTENSION(meshShaderSupported, meshShaderFeatures);
 
@@ -681,8 +684,8 @@ bool DeviceManager_VK::createDevice()
         .setAttachmentFragmentShadingRate(true);
     auto vulkan13features = vk::PhysicalDeviceVulkan13Features()
         .setDynamicRendering(true)
-        .setSynchronization2(synchronization2Supported)
-        .setMaintenance4(maintenance4Features.maintenance4);
+        .setSynchronization2(true)
+        .setMaintenance4(true);
 #if DONUT_WITH_AFTERMATH
     auto aftermathFeatures = vk::DeviceDiagnosticsConfigCreateInfoNV()
         .setFlags(vk::DeviceDiagnosticsConfigFlagBitsNV::eEnableResourceTracking
@@ -693,13 +696,12 @@ bool DeviceManager_VK::createDevice()
         .setClusterAccelerationStructure(true);
     auto mutableDescriptorTypeFeatures = vk::PhysicalDeviceMutableDescriptorTypeFeaturesEXT()
         .setMutableDescriptorType(true);
-    auto dynamicRenderingFeatures = vk::PhysicalDeviceDynamicRenderingFeatures()
-        .setDynamicRendering(true);
     auto linearSweptSpheresFeatures = vk::PhysicalDeviceRayTracingLinearSweptSpheresFeaturesNV()
         .setSpheres(true)
         .setLinearSweptSpheres(true);
     
     pNext = nullptr;
+    APPEND_EXTENSION(true, vulkan13features)
     APPEND_EXTENSION(accelStructSupported, accelStructFeatures)
     APPEND_EXTENSION(rayPipelineSupported, rayPipelineFeatures)
     APPEND_EXTENSION(rayQuerySupported, rayQueryFeatures)
@@ -708,9 +710,6 @@ bool DeviceManager_VK::createDevice()
     APPEND_EXTENSION(barycentricSupported, barycentricFeatures)
     APPEND_EXTENSION(clusterAccelerationStructureSupported, clusterAccelerationStructureFeatures)
     APPEND_EXTENSION(mutableDescriptorTypeSupported, mutableDescriptorTypeFeatures)
-    APPEND_EXTENSION(physicalDeviceProperties.apiVersion >= VK_API_VERSION_1_3, vulkan13features)
-    APPEND_EXTENSION(physicalDeviceProperties.apiVersion < VK_API_VERSION_1_3 && maintenance4Supported, maintenance4Features)
-    APPEND_EXTENSION(physicalDeviceProperties.apiVersion < VK_API_VERSION_1_3, dynamicRenderingFeatures)
     APPEND_EXTENSION(linearSweptSpheresSupported, linearSweptSpheresFeatures)
     APPEND_EXTENSION(meshShaderSupported, meshShaderFeatures)
     
