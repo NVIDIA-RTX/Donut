@@ -106,7 +106,18 @@ void PlanarView::SetVariableRateShadingState(const nvrhi::VariableRateShadingSta
 
 void PlanarView::SetMatrices(const affine3& viewMatrix, const float4x4& projMatrix)
 {
+    SetViewMatrix(viewMatrix);
+    SetProjectionMatrix(projMatrix);
+}
+
+void PlanarView::SetViewMatrix(const affine3& viewMatrix)
+{
     m_ViewMatrix = viewMatrix;
+    m_CacheValid = false;
+}
+
+void PlanarView::SetProjectionMatrix(const float4x4& projMatrix)
+{
     m_ProjMatrix = projMatrix;
     m_CacheValid = false;
 }

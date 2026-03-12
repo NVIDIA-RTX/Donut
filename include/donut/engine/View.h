@@ -117,6 +117,8 @@ namespace donut::engine
         void SetViewport(const nvrhi::Viewport& viewport);
         void SetVariableRateShadingState(const nvrhi::VariableRateShadingState& shadingRateState);
         void SetMatrices(const dm::affine3& viewMatrix, const dm::float4x4& projMatrix);
+        void SetViewMatrix(const dm::affine3& viewMatrix);
+        void SetProjectionMatrix(const dm::float4x4& projMatrix);
         void SetPixelOffset(dm::float2 offset);
         void SetArraySlice(int arraySlice);
         void UpdateCache();
