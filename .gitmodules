@@ -3,16 +3,16 @@
 	url = ../NVRHI.git
 [submodule "thirdparty/imgui"]
 	path = thirdparty/imgui
-	url = https://github.com/ocornut/imgui
+	url = git@github.com:ocornut/imgui.git
 [submodule "thirdparty/stb"]
 	path = thirdparty/stb
-	url = https://github.com/nothings/stb.git
+	url = git@github.com:nothings/stb.git
 [submodule "thirdparty/glfw"]
 	path = thirdparty/glfw
-	url = https://github.com/glfw/glfw.git
+	url = git@github.com:glfw/glfw.git
 [submodule "thirdparty/cgltf"]
 	path = thirdparty/cgltf
-	url = https://github.com/jkuhlmann/cgltf
+	url = git@github.com:jkuhlmann/cgltf.git
 [submodule "ShaderMake"]
 	path = ShaderMake
-	url = https://github.com/NVIDIA-RTX/ShaderMake.git
+	url = git@github.com:NVIDIA-RTX/ShaderMake.git
