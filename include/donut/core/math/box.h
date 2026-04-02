@@ -251,25 +251,25 @@ namespace donut::math
 	template <typename T, int n>
 	T distance(box<T, n> const & a, vector<T, n> const & b)
 	{
-		return distance(a.clamp(b), b);
+		return length(a.clamp(b) - b);
 	}
 
 	template <typename T, int n>
 	T distance(vector<T, n> const & a, box<T, n> const & b)
 	{
-		return distance(a, b.clamp(a));
+		return length(a - b.clamp(a));
 	}
 
 	template <typename T, int n>
 	T distanceSquared(box<T, n> const & a, vector<T, n> const & b)
 	{
-		return distanceSquared(a.clamp(b), b);
+		return lengthSquared(a.clamp(b) - b);
 	}
 
 	template <typename T, int n>
 	T distanceSquared(vector<T, n> const & a, box<T, n> const & b)
 	{
-		return distanceSquared(a, b.clamp(a));
+		return lengthSquared(a - b.clamp(a));
 	}
 
 	// !!! this doesn't match the behavior of isnear() for vectors and matrices -
