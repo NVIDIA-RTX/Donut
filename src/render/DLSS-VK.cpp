@@ -214,7 +214,7 @@ public:
         NVSDK_NGX_Resource_VK exposureResource;
         NVSDK_NGX_Resource_VK diffuseAlbedoResource;
         NVSDK_NGX_Resource_VK specularAlbedoResource;
-        NVSDK_NGX_Resource_VK normalRougnessResource;
+        NVSDK_NGX_Resource_VK normalRoughnessResource;
         FillTextureResource(inColorResource, params.inputColorTexture);
         FillTextureResource(outColorResource, params.outputColorTexture);
         FillTextureResource(depthResource, params.depthTexture);
@@ -223,7 +223,7 @@ public:
         {
             FillTextureResource(diffuseAlbedoResource, params.diffuseAlbedo);
             FillTextureResource(specularAlbedoResource, params.specularAlbedo);
-            FillTextureResource(normalRougnessResource, params.normalRoughness);
+            FillTextureResource(normalRoughnessResource, params.normalRoughness);
         }
         if (useExposureBuffer)
         {
@@ -263,8 +263,8 @@ public:
         {
             m_parameters->Set(NVSDK_NGX_Parameter_DiffuseAlbedo, &diffuseAlbedoResource);
             m_parameters->Set(NVSDK_NGX_Parameter_SpecularAlbedo, &specularAlbedoResource);
-            m_parameters->Set(NVSDK_NGX_Parameter_GBuffer_Normals, &normalRougnessResource);
-            m_parameters->Set(NVSDK_NGX_Parameter_GBuffer_Roughness, &normalRougnessResource);
+            m_parameters->Set(NVSDK_NGX_Parameter_GBuffer_Normals, &normalRoughnessResource);
+            m_parameters->Set(NVSDK_NGX_Parameter_GBuffer_Roughness, &normalRoughnessResource);
         }
 
         NVSDK_NGX_Result result = NVSDK_NGX_VULKAN_EvaluateFeature_C(vkCmdBuf, m_dlssHandle, m_parameters, NULL);
