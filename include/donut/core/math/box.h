@@ -214,7 +214,7 @@ namespace donut::math
             return result;
         }
 
-        box operator *= (const affine<T, n>& transform) const
+        box operator *= (const affine<T, n>& transform)
         {
             *this = *this * transform;
             return *this;
