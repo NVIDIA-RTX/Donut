@@ -954,11 +954,22 @@ bool GltfImporter::Load(
 
         matinfo->emissiveTexture = load_texture(material.emissive_texture.texture, true);
         matinfo->emissiveColor = material.emissive_factor;
-        matinfo->emissiveIntensity = dm::maxComponent(matinfo->emissiveColor);
-        if (matinfo->emissiveIntensity > 0.f)
-            matinfo->emissiveColor /= matinfo->emissiveIntensity;
+        
+        // emissive_strength is available via the KHR_materials_emissive_strength extension
+        if (material.has_emissive_strength)
+        {
+            matinfo->emissiveIntensity = material.emissive_strength.emissive_strength;
+            // No need to compute (emissive_factor * emissive_strength) here. It's accounted for in FillConstantBuffer.
+        }
         else
-            matinfo->emissiveIntensity = 1.f;
+        {
+            matinfo->emissiveIntensity = dm::maxComponent(matinfo->emissiveColor);
+            if (matinfo->emissiveIntensity > 0.0f)
+                matinfo->emissiveColor /= matinfo->emissiveIntensity;
+            else
+                matinfo->emissiveIntensity = 1.0f;
+        }
+
         matinfo->normalTexture = load_texture(material.normal_texture.texture, false);
         matinfo->normalTextureScale = material.normal_texture.scale;
         matinfo->occlusionTexture = load_texture(material.occlusion_texture.texture, false);
