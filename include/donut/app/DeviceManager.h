@@ -142,10 +142,9 @@ namespace donut::app
 
     struct DeviceCreationParameters : public InstanceParameters
     {
-        bool startMaximized = false; // ignores backbuffer width/height to be monitor size
-        bool startFullscreen = false;
-        bool startBorderless = false;
-        bool allowModeSwitch = false;
+        bool startMaximized = false;   // ignores backbuffer width/height; sizes to monitor
+        bool startFullscreen = false;  // start in GLFW fullscreen at monitor native resolution
+        bool startBorderless = false;  // create window without decorations
         int windowPosX = -1;            // -1 means use default placement
         int windowPosY = -1;
         uint32_t backBufferWidth = 1280;
@@ -292,6 +291,10 @@ namespace donut::app
         float m_PrevDPIScaleFactorY = 0.f;
         bool m_RequestedVSync = false;
         bool m_InstanceCreated = false;
+        int m_PrevWindowX = 0;
+        int m_PrevWindowY = 0;
+        int m_PrevWindowWidth = 0;
+        int m_PrevWindowHeight = 0;
         bool m_RequestedRenderUnfocused = true;
 
         double m_AverageFrameTime = 0.0;
@@ -309,6 +312,7 @@ namespace donut::app
 
         void UpdateWindowSize();
         bool ShouldRenderUnfocused() const;
+        GLFWmonitor* GetCurrentMonitor() const;
 
         void BackBufferResizing();
         void BackBufferResized();
@@ -327,6 +331,7 @@ namespace donut::app
         virtual void ResizeSwapChain() = 0;
         virtual bool BeginFrame() = 0;
         virtual bool Present() = 0;
+        void ToggleFullscreen();
 
     public:
         [[nodiscard]] virtual nvrhi::IDevice *GetDevice() const = 0;
@@ -355,6 +360,7 @@ namespace donut::app
         void WindowFocusCallback(int focused) { }
         void WindowRefreshCallback() { }
         void WindowPosCallback(int xpos, int ypos);
+        void WindowContentScaleCallback(float scaleX, float scaleY);
 
         void KeyboardUpdate(int key, int scancode, int action, int mods);
         void KeyboardCharInput(unsigned int unicode, int mods);
