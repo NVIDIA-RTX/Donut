@@ -115,24 +115,6 @@ static bool MoveWindowOntoAdapter(IDXGIAdapter* targetAdapter, RECT& rect)
 
 bool DeviceManager_DX11::BeginFrame()
 {
-    DXGI_SWAP_CHAIN_DESC newSwapChainDesc;
-    if (SUCCEEDED(m_SwapChain->GetDesc(&newSwapChainDesc)))
-    {
-        if (m_SwapChainDesc.Windowed != newSwapChainDesc.Windowed)
-        {
-            BackBufferResizing();
-
-            m_SwapChainDesc = newSwapChainDesc;
-            m_DeviceParams.backBufferWidth = newSwapChainDesc.BufferDesc.Width;
-            m_DeviceParams.backBufferHeight = newSwapChainDesc.BufferDesc.Height;
-
-            if (newSwapChainDesc.Windowed)
-                glfwSetWindowMonitor(m_Window, nullptr, 50, 50, newSwapChainDesc.BufferDesc.Width, newSwapChainDesc.BufferDesc.Height, 0);
-
-            ResizeSwapChain();
-            BackBufferResized();
-        }
-    }
     return true;
 }
 
@@ -311,9 +293,9 @@ bool DeviceManager_DX11::CreateSwapChain()
     m_SwapChainDesc.OutputWindow = m_hWnd;
     m_SwapChainDesc.SampleDesc.Count = m_DeviceParams.swapChainSampleCount;
     m_SwapChainDesc.SampleDesc.Quality = m_DeviceParams.swapChainSampleQuality;
-    m_SwapChainDesc.Windowed = !m_DeviceParams.startFullscreen;
+    m_SwapChainDesc.Windowed = TRUE; // DXGI always windowed; fullscreen handled by GLFW
     m_SwapChainDesc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
-    m_SwapChainDesc.Flags = m_DeviceParams.allowModeSwitch ? DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH : 0;
+    m_SwapChainDesc.Flags = 0;
 
     // Special processing for sRGB swap chain formats.
     // DXGI will not create a swap chain with an sRGB format, but its contents will be interpreted as sRGB.
@@ -332,12 +314,14 @@ bool DeviceManager_DX11::CreateSwapChain()
     }
     
     HRESULT hr = m_DxgiFactory->CreateSwapChain(m_Device, &m_SwapChainDesc, &m_SwapChain);
-    
+
     if(FAILED(hr))
     {
         donut::log::error("Failed to create a swap chain, HRESULT = 0x%08x", hr);
         return false;
     }
+
+    m_DxgiFactory->MakeWindowAssociation(m_hWnd, DXGI_MWA_NO_ALT_ENTER);
 
     bool ret = CreateRenderTarget();
 
