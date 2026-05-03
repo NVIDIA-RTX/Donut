@@ -96,6 +96,7 @@ void PlanarView::SetViewport(const nvrhi::Viewport& viewport)
 {
     m_Viewport = viewport;
     m_ScissorRect = nvrhi::Rect(viewport);
+    m_AspectRatio = viewport.width() / viewport.height();
     m_CacheValid = false;
 }
 

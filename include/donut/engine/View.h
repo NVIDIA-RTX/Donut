@@ -90,6 +90,7 @@ namespace donut::engine
         // Directly settable parameters
         nvrhi::Viewport m_Viewport;
         nvrhi::Rect m_ScissorRect;
+        float m_AspectRatio;
         nvrhi::VariableRateShadingState m_ShadingRateState;
         dm::affine3 m_ViewMatrix = dm::affine3::identity();
         dm::float4x4 m_ProjMatrix = dm::float4x4::identity();
@@ -125,6 +126,7 @@ namespace donut::engine
 
         [[nodiscard]] const nvrhi::Viewport& GetViewport() const { return m_Viewport; }
         [[nodiscard]] const nvrhi::Rect& GetScissorRect() const { return m_ScissorRect; }
+        [[nodiscard]] const float GetAspectRatio() const { return m_AspectRatio; }
 
         [[nodiscard]] nvrhi::ViewportState GetViewportState() const override;
         [[nodiscard]] nvrhi::VariableRateShadingState GetVariableRateShadingState() const override;
