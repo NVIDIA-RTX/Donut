@@ -38,6 +38,12 @@ static void DumpFileCallback(const void* pGpuCrashDump, const uint32_t gpuCrashD
     std::filesystem::path dumpPath = dumper->GetDumpFolder() / "crash.nv-gpudmp";
     nativeFS->writeFile(dumpPath, pGpuCrashDump, gpuCrashDumpSize);
 
+    // Surface the absolute dump path so post-mortem tooling (e.g. the
+    // nv-aftermath skill / nv-aftermath-format.exe) can pick it up
+    // straight from the log without grepping.
+    donut::log::info("Aftermath crash dump written: %s",
+                     std::filesystem::absolute(dumpPath).string().c_str());
+
     GFSDK_Aftermath_GpuCrashDump_Decoder decoder = {};
     GFSDK_Aftermath_Result result = GFSDK_Aftermath_GpuCrashDump_CreateDecoder(GFSDK_Aftermath_Version_API, pGpuCrashDump, gpuCrashDumpSize, &decoder);
     if (!GFSDK_Aftermath_SUCCEED(result))
