@@ -277,6 +277,22 @@ bool DeviceManager::CreateHeadlessDevice(const DeviceCreationParameters& params)
     return CreateDevice();
 }
 
+// Clear HWND_TOPMOST that GLFW applies to fullscreen windows on Win32. Called
+// after every glfwSetWindowMonitor() that puts the window into fullscreen.
+// See DeviceCreationParameters::fullscreenAlwaysOnTop.
+static void ClearFullscreenTopmost(GLFWwindow* window)
+{
+#if _WIN32
+    if (HWND hwnd = glfwGetWin32Window(window))
+    {
+        SetWindowPos(hwnd, HWND_NOTOPMOST, 0, 0, 0, 0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+    }
+#else
+    (void)window;
+#endif
+}
+
 bool DeviceManager::CreateWindowDeviceAndSwapChain(const DeviceCreationParameters& params, const char *windowTitle)
 {
     m_DeviceParams = params;
@@ -397,6 +413,9 @@ bool DeviceManager::CreateWindowDeviceAndSwapChain(const DeviceCreationParameter
     {
         glfwSetWindowMonitor(m_Window, startMonitor, 0, 0,
             m_DeviceParams.backBufferWidth, m_DeviceParams.backBufferHeight, m_DeviceParams.refreshRate);
+
+        if (!m_DeviceParams.fullscreenAlwaysOnTop)
+            ClearFullscreenTopmost(m_Window);
     }
     else
     {
@@ -852,6 +871,9 @@ void DeviceManager::ToggleFullscreen()
         // glfwSetWindowMonitor fires the framebuffer size callback so UpdateWindowSize
         // picks up the monitor-native resolution and calls ResizeSwapChain.
         glfwSetWindowMonitor(m_Window, monitor, monX, monY, mode->width, mode->height, mode->refreshRate);
+
+        if (!m_DeviceParams.fullscreenAlwaysOnTop)
+            ClearFullscreenTopmost(m_Window);
     }
 }
 
