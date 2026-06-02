@@ -78,7 +78,7 @@ namespace donut::log
             {
                 if (severity == Severity::Error || severity == Severity::Fatal)
                 {
-                    MessageBoxA(0, buf, g_ErrorMessageCaption.c_str(), MB_ICONERROR);
+                    MessageBoxA(0, buf, g_ErrorMessageCaption.c_str(), MB_ICONERROR | MB_TOPMOST | MB_SETFOREGROUND | MB_TASKMODAL);
                 }
             }
 

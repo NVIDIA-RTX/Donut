@@ -145,6 +145,15 @@ namespace donut::app
         bool startMaximized = false;   // ignores backbuffer width/height; sizes to monitor
         bool startFullscreen = false;  // start in GLFW fullscreen at monitor native resolution
         bool startBorderless = false;  // create window without decorations
+
+        // Win32-only: GLFW always sets HWND_TOPMOST on fullscreen windows
+        // (see glfw/glfw#1967, won't-fix upstream). For borderless / windowed
+        // fullscreen apps this hides debuggers, error dialogs, and other apps
+        // behind the window. The default (false) clears HWND_TOPMOST after
+        // every fullscreen transition (startup and ToggleFullscreen). Set to
+        // true to keep GLFW's stock always-on-top behavior — appropriate only
+        // for true exclusive-fullscreen / kiosk-style apps.
+        bool fullscreenAlwaysOnTop = false;
         int windowPosX = -1;            // -1 means use default placement
         int windowPosY = -1;
         uint32_t backBufferWidth = 1280;
