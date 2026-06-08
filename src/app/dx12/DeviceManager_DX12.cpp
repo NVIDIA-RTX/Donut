@@ -323,6 +323,7 @@ bool DeviceManager_DX12::CreateDevice()
 #endif
     deviceDesc.logBufferLifetime = m_DeviceParams.logBufferLifetime;
     deviceDesc.enableHeapDirectlyIndexed = m_DeviceParams.enableHeapDirectlyIndexed;
+    deviceDesc.enableRayTracingValidation = m_DeviceParams.enableRayTracingValidation;
 
     m_NvrhiDevice = nvrhi::d3d12::createDevice(deviceDesc);
 

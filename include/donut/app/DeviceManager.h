@@ -170,6 +170,7 @@ namespace donut::app
 
         uint32_t maxFramesInFlight = 2;
         bool enableNvrhiValidationLayer = false;
+        bool enableRayTracingValidation = false;
         bool vsyncEnabled = false;
         bool enableRayTracingExtensions = false; // for vulkan
         bool enableComputeQueue = false;
