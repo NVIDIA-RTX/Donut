@@ -90,6 +90,7 @@ namespace donut::engine
         // Directly settable parameters
         nvrhi::Viewport m_Viewport;
         nvrhi::Rect m_ScissorRect;
+        float m_AspectRatio;
         nvrhi::VariableRateShadingState m_ShadingRateState;
         dm::affine3 m_ViewMatrix = dm::affine3::identity();
         dm::float4x4 m_ProjMatrix = dm::float4x4::identity();
@@ -117,12 +118,15 @@ namespace donut::engine
         void SetViewport(const nvrhi::Viewport& viewport);
         void SetVariableRateShadingState(const nvrhi::VariableRateShadingState& shadingRateState);
         void SetMatrices(const dm::affine3& viewMatrix, const dm::float4x4& projMatrix);
+        void SetViewMatrix(const dm::affine3& viewMatrix);
+        void SetProjectionMatrix(const dm::float4x4& projMatrix);
         void SetPixelOffset(dm::float2 offset);
         void SetArraySlice(int arraySlice);
         void UpdateCache();
 
         [[nodiscard]] const nvrhi::Viewport& GetViewport() const { return m_Viewport; }
         [[nodiscard]] const nvrhi::Rect& GetScissorRect() const { return m_ScissorRect; }
+        [[nodiscard]] const float GetAspectRatio() const { return m_AspectRatio; }
 
         [[nodiscard]] nvrhi::ViewportState GetViewportState() const override;
         [[nodiscard]] nvrhi::VariableRateShadingState GetVariableRateShadingState() const override;
