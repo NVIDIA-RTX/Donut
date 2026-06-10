@@ -136,7 +136,7 @@ bool Scene::LoadWithThreadPool(const std::filesystem::path& sceneFileName, Threa
     g_LoadingStats.ObjectsLoaded = 0;
     g_LoadingStats.ObjectsTotal = 0;
     
-    m_SceneGraph = std::make_shared<SceneGraph>();
+    m_SceneGraph = m_SceneTypeFactory->CreateGraph();
 
     if (sceneFileName.extension() == ".gltf" || sceneFileName.extension() == ".glb")
     {
@@ -167,7 +167,7 @@ bool Scene::LoadWithThreadPool(const std::filesystem::path& sceneFileName, Threa
 
         if (documentRoot.isObject())
         {
-            if (!LoadCustomData(documentRoot, threadPool))
+            if (!LoadCustomData(documentRoot, scenePath, threadPool))
                 return false;
 
             LoadModels(documentRoot["models"], scenePath, threadPool);
@@ -574,7 +574,7 @@ void Scene::LoadAnimations(const Json::Value& nodeList)
     }
 }
 
-bool Scene::LoadCustomData(Json::Value& rootNode, ThreadPool* threadPool)
+bool Scene::LoadCustomData(Json::Value& rootNode, const std::filesystem::path& scenePath, ThreadPool* threadPool)
 {
     // Reserved for derived classes
     return true;
