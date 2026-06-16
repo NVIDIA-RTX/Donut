@@ -392,7 +392,7 @@ namespace donut::math
 		T sinHalfTheta = std::sin(T(0.5) * radians);
 		T cosHalfTheta = std::cos(T(0.5) * radians);
 
-		return quaternion<T>(cosHalfTheta, axis * sinHalfTheta);
+		return quaternion<T>::fromWXYZ(cosHalfTheta, axis * sinHalfTheta);
 	}
 
 	template<typename T>
