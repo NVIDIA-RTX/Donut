@@ -55,12 +55,6 @@ freely, subject to the following restrictions:
 #include <donut/app/DeviceManager_DX12.h>
 #include <donut/core/log.h>
 
-#include <Windows.h>
-#include <dxgi1_5.h>
-#include <dxgidebug.h>
-
-#include <nvrhi/d3d12.h>
-#include <nvrhi/validation.h>
 
 #include <sstream>
 

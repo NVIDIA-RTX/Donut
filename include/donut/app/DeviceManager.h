@@ -58,7 +58,7 @@ freely, subject to the following restrictions:
 #endif
 
 #if DONUT_WITH_DX12
-#include <d3d12.h>
+#include <directx/d3d12.h>
 #endif
 
 #if DONUT_WITH_VULKAN
