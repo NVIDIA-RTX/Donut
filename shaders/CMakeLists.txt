@@ -63,6 +63,10 @@ set(byproducts
 	passes/forward_vs
 	passes/gbuffer_ps
 	passes/gbuffer_vs
+	passes/manipulator_vs_main
+	passes/manipulator_gs_main
+	passes/manipulator_ps_main
+	passes/manipulator_scan_cs
 	passes/histogram_cs
 	passes/joints_main_ps
 	passes/joints_main_vs

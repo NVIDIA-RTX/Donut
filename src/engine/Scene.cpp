@@ -580,6 +580,11 @@ bool Scene::LoadCustomData(Json::Value& rootNode, const std::filesystem::path& s
     return true;
 }
 
+std::shared_ptr<SceneGraph> Scene::CreateSceneGraph()
+{
+    return m_SceneGraph = m_SceneTypeFactory->CreateGraph();
+}
+
 void Scene::FinishedLoading(uint32_t frameIndex)
 {
     nvrhi::CommandListHandle commandList = m_Device->createCommandList();
