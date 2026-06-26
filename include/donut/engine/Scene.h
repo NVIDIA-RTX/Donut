@@ -137,6 +137,9 @@ namespace donut::engine
 
         static const SceneLoadingStats& GetLoadingStats();
 
+        // Creates an empty scene graph for hand-built scenes
+        std::shared_ptr<SceneGraph> CreateSceneGraph();
+
         [[nodiscard]] std::shared_ptr<SceneGraph> GetSceneGraph() const { return m_SceneGraph; }
         [[nodiscard]] nvrhi::IDescriptorTable* GetDescriptorTable() const { return m_DescriptorTable ? m_DescriptorTable->GetDescriptorTable() : nullptr; }
         [[nodiscard]] nvrhi::IBuffer* GetMaterialBuffer() const { return m_MaterialBuffer; }

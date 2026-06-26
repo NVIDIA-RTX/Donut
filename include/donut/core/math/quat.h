@@ -392,7 +392,7 @@ namespace donut::math
 		T sinHalfTheta = std::sin(T(0.5) * radians);
 		T cosHalfTheta = std::cos(T(0.5) * radians);
 
-		return quaternion<T>(cosHalfTheta, axis * sinHalfTheta);
+        return quaternion<T>::fromWXYZ(cosHalfTheta, axis * sinHalfTheta);
 	}
 
 	template<typename T>
@@ -411,6 +411,28 @@ namespace donut::math
 
 		// Note: multiplication order for quats is like column-vector convention
 		return quatZ * quatY * quatX;
+	}
+
+	// Inverse of rotationQuat(euler): recover the ZYX euler angles (radians) from a rotation quat.
+	template<typename T>
+	vector<T, 3> eulerFromQuat(const quaternion<T>& q)
+	{
+		vector<T, 3> euler;
+		{
+			const T y = T(2) * (q.x * q.y + q.w * q.z);
+			const T x = q.w * q.w + q.x * q.x - q.y * q.y - q.z * q.z;
+			euler.z = (x == T(0) && y == T(0)) ? T(0) : std::atan2(y, x);
+		}
+		{
+			const T y = T(2) * (q.y * q.z + q.w * q.x);
+			const T x = q.w * q.w - q.x * q.x - q.y * q.y + q.z * q.z;
+			euler.x = (x == T(0) && y == T(0)) ? std::atan2(q.x, q.w) : std::atan2(y, x);
+		}
+		// asin domain guard for the pitch term (clamp without pulling in <algorithm>).
+		T sinPitch = T(-2) * (q.x * q.z - q.w * q.y);
+		sinPitch = sinPitch < T(-1) ? T(-1) : (sinPitch > T(1) ? T(1) : sinPitch);
+		euler.y = std::asin(sinPitch);
+		return euler;
 	}
 
 	template<typename T>
