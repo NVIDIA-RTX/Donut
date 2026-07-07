@@ -171,11 +171,6 @@ namespace donut::app
         uint32_t maxFramesInFlight = 2;
         bool enableNvrhiValidationLayer = false;
         bool enableRayTracingValidation = false;
-        // DX12 enhanced barriers (nvrhi). Defaults to true to match nvrhi's own
-        // default; set false to keep nvrhi on legacy barriers (e.g. when an
-        // integration such as Streamline/DLSS-RR issues legacy ResourceBarrier
-        // calls on shared resources, which cannot be mixed with enhanced barriers).
-        bool enableEnhancedBarriers = true;
         bool vsyncEnabled = false;
         bool enableRayTracingExtensions = false; // for vulkan
         bool enableComputeQueue = false;

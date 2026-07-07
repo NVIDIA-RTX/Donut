@@ -1164,46 +1164,6 @@ void StreamlineIntegration::ReleaseResourceCallback(sl::Resource* resource, void
     }
 };
 
-#if DONUT_WITH_DX12
-// Convert nvrhi resource states to legacy D3D12 states.  Used on the legacy-
-// barrier path of GetSLResource to hand Streamline the resource's actual current
-// state (Streamline restores it on return), keeping nvrhi's state tracking in
-// sync.  On the enhanced-barrier path GetSLResource transitions to COMMON instead
-// (Streamline issues legacy barriers internally, which require COMMON layout).
-static D3D12_RESOURCE_STATES D3D12convertResourceStates(nvrhi::ResourceStates stateBits)
-{
-    if (stateBits == nvrhi::ResourceStates::Common)
-        return D3D12_RESOURCE_STATE_COMMON;
-
-    D3D12_RESOURCE_STATES result = D3D12_RESOURCE_STATE_COMMON; // also 0
-
-    if ((stateBits & nvrhi::ResourceStates::ConstantBuffer) != 0) result |= D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER;
-    if ((stateBits & nvrhi::ResourceStates::VertexBuffer) != 0) result |= D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER;
-    if ((stateBits & nvrhi::ResourceStates::IndexBuffer) != 0) result |= D3D12_RESOURCE_STATE_INDEX_BUFFER;
-    if ((stateBits & nvrhi::ResourceStates::IndirectArgument) != 0) result |= D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT;
-    // ShaderResource was split into Pixel/NonPixel — map each bit independently.
-    if ((stateBits & nvrhi::ResourceStates::PixelShaderResource) != 0) result |= D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-    if ((stateBits & nvrhi::ResourceStates::NonPixelShaderResource) != 0) result |= D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-    if ((stateBits & nvrhi::ResourceStates::UnorderedAccess) != 0) result |= D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-    if ((stateBits & nvrhi::ResourceStates::RenderTarget) != 0) result |= D3D12_RESOURCE_STATE_RENDER_TARGET;
-    if ((stateBits & nvrhi::ResourceStates::DepthWrite) != 0) result |= D3D12_RESOURCE_STATE_DEPTH_WRITE;
-    if ((stateBits & nvrhi::ResourceStates::DepthRead) != 0) result |= D3D12_RESOURCE_STATE_DEPTH_READ;
-    if ((stateBits & nvrhi::ResourceStates::StreamOut) != 0) result |= D3D12_RESOURCE_STATE_STREAM_OUT;
-    if ((stateBits & nvrhi::ResourceStates::CopyDest) != 0) result |= D3D12_RESOURCE_STATE_COPY_DEST;
-    if ((stateBits & nvrhi::ResourceStates::CopySource) != 0) result |= D3D12_RESOURCE_STATE_COPY_SOURCE;
-    if ((stateBits & nvrhi::ResourceStates::ResolveDest) != 0) result |= D3D12_RESOURCE_STATE_RESOLVE_DEST;
-    if ((stateBits & nvrhi::ResourceStates::ResolveSource) != 0) result |= D3D12_RESOURCE_STATE_RESOLVE_SOURCE;
-    if ((stateBits & nvrhi::ResourceStates::Present) != 0) result |= D3D12_RESOURCE_STATE_PRESENT;
-    if ((stateBits & nvrhi::ResourceStates::AccelStructRead) != 0) result |= D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE;
-    if ((stateBits & nvrhi::ResourceStates::AccelStructWrite) != 0) result |= D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE;
-    if ((stateBits & nvrhi::ResourceStates::AccelStructBuildInput) != 0) result |= D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-    if ((stateBits & nvrhi::ResourceStates::AccelStructBuildBlas) != 0) result |= D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE;
-    if ((stateBits & nvrhi::ResourceStates::ShadingRateSurface) != 0) result |= D3D12_RESOURCE_STATE_SHADING_RATE_SOURCE;
-
-    return result;
-}
-#endif
-
 nvrhi::Object StreamlineIntegration::GetNativeCommandList(nvrhi::ICommandList* commandList)
 {
 #if DONUT_WITH_DX11
@@ -1284,24 +1244,18 @@ static void GetSLResource(
 #if DONUT_WITH_DX12
     case nvrhi::GraphicsAPI::D3D12:
     {
-        if (commandList->getDevice()->queryFeatureSupport(nvrhi::Feature::EnhancedBarriers))
-        {
-            // Enhanced barriers: Streamline issues legacy ResourceBarrier calls
-            // internally, which D3D12 only permits on a resource in the COMMON
-            // layout.  Transition to COMMON and tell Streamline so.
-            commandList->setTextureState(inputTex, nvrhi::AllSubresources, nvrhi::ResourceStates::Common);
-            slResource = sl::Resource{ sl::ResourceType::eTex2d, inputTex->getNativeObject(nvrhi::ObjectTypes::D3D12_Resource), nullptr, nullptr, D3D12_RESOURCE_STATE_COMMON };
-        }
-        else
-        {
-            // Legacy barriers: hand Streamline the resource's actual current state
-            // (Streamline transitions from it and restores it on return), so nvrhi's
-            // state tracking stays in sync.  Forcing COMMON here instead desyncs the
-            // tracker against the resource's real (initial/last-barrier) state and
-            // produces "Before state does not match" ResourceBarrier errors.
-            uint32_t resourceState = static_cast<uint32_t>(D3D12convertResourceStates(commandList->getTextureSubresourceState(inputTex, 0, 0)));
-            slResource = sl::Resource{ sl::ResourceType::eTex2d, inputTex->getNativeObject(nvrhi::ObjectTypes::D3D12_Resource), nullptr, nullptr, resourceState };
-        }
+        // Streamline issues legacy ResourceBarrier calls internally; with
+        // enhanced barriers D3D12 only permits those on a resource in the
+        // COMMON layout.  Transition to COMMON and tell Streamline so
+        // (Streamline restores it on return), which works identically on
+        // both barrier modes.  The commit is essential — Streamline records
+        // onto the native command list, which never sees nvrhi's
+        // pending-barrier queue; an uncommitted setTextureState desyncs
+        // nvrhi's state tracking from the resource's real state and produces
+        // "Before state does not match" ResourceBarrier errors.
+        commandList->setTextureState(inputTex, nvrhi::AllSubresources, nvrhi::ResourceStates::Common);
+        commandList->commitBarriers();
+        slResource = sl::Resource{ sl::ResourceType::eTex2d, inputTex->getNativeObject(nvrhi::ObjectTypes::D3D12_Resource), nullptr, nullptr, D3D12_RESOURCE_STATE_COMMON };
         break;
     }
 #endif
