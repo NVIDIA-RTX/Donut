@@ -104,6 +104,8 @@ namespace donut::engine
         
         nvrhi::IDescriptorTable* GetDescriptorTable() const { return m_DescriptorTable; }
 
+        void ReserveCapacity(uint32_t capacity);
+
         DescriptorIndex CreateDescriptor(nvrhi::BindingSetItem item);
         DescriptorHandle CreateDescriptorHandle(nvrhi::BindingSetItem item);
         nvrhi::BindingSetItem GetDescriptor(DescriptorIndex index);

@@ -1244,7 +1244,17 @@ static void GetSLResource(
 #if DONUT_WITH_DX12
     case nvrhi::GraphicsAPI::D3D12:
     {
+        // Streamline issues legacy ResourceBarrier calls internally; with
+        // enhanced barriers D3D12 only permits those on a resource in the
+        // COMMON layout.  Transition to COMMON and tell Streamline so
+        // (Streamline restores it on return), which works identically on
+        // both barrier modes.  The commit is essential — Streamline records
+        // onto the native command list, which never sees nvrhi's
+        // pending-barrier queue; an uncommitted setTextureState desyncs
+        // nvrhi's state tracking from the resource's real state and produces
+        // "Before state does not match" ResourceBarrier errors.
         commandList->setTextureState(inputTex, nvrhi::AllSubresources, nvrhi::ResourceStates::Common);
+        commandList->commitBarriers();
         slResource = sl::Resource{ sl::ResourceType::eTex2d, inputTex->getNativeObject(nvrhi::ObjectTypes::D3D12_Resource), nullptr, nullptr, D3D12_RESOURCE_STATE_COMMON };
         break;
     }

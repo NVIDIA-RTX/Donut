@@ -68,6 +68,22 @@ donut::engine::DescriptorTableManager::DescriptorTableManager(nvrhi::IDevice* de
     memset(m_Descriptors.data(), 0, sizeof(nvrhi::BindingSetItem) * capacity);
 }
 
+void donut::engine::DescriptorTableManager::ReserveCapacity(uint32_t capacity)
+{
+    uint32_t currentCapacity = m_DescriptorTable->getCapacity();
+    if (capacity <= currentCapacity)
+        return;
+
+    // Grow once to the requested capacity (keepContents preserves existing
+    // descriptors). Keep the bookkeeping vectors in lockstep with the table,
+    // exactly as the on-demand grow path in CreateDescriptor does.
+    m_Device->resizeDescriptorTable(m_DescriptorTable, capacity);
+    m_AllocatedDescriptors.resize(capacity);
+    m_Descriptors.resize(capacity);
+    for (uint32_t index = currentCapacity; index < capacity; index++)
+        m_Descriptors[index] = nvrhi::BindingSetItem::None(index);
+}
+
 donut::engine::DescriptorIndex donut::engine::DescriptorTableManager::CreateDescriptor(nvrhi::BindingSetItem item)
 {
     const auto& found = m_DescriptorIndexMap.find(item);
