@@ -34,6 +34,12 @@
     #endif
 #else
     #define USE_F16C 0
+
+    // Non-x86 targets (e.g. Windows ARM64) still need intrin.h for bit-scan
+    // intrinsics used in the scalar float conversion path below.
+    #ifdef _MSC_VER
+    #include <intrin.h>
+    #endif
 #endif
 
 namespace donut::math
@@ -367,8 +373,19 @@ namespace donut::math
         {
             if (inMantissa != 0) // Non-zero denormal - convert to a normal number, there must be enough exponent bits for that
             {
+                // TODO: When Donut moves to C++20, replace this platform-specific
+                // leading-zero-count block with std::countl_zero (<bit>):
+                // https://en.cppreference.com/cpp/numeric/countl_zero
 #ifdef _MSC_VER
+#if defined(_M_ARM64) || defined(_M_ARM64EC)
+                // __lzcnt is x86-only; use _BitScanReverse on ARM64.
+                // inMantissa is guaranteed non-zero here (checked above).
+                unsigned long msbIndex;
+                _BitScanReverse(&msbIndex, uint32_t(inMantissa));
+                uint32_t leadingZeros = 31u - uint32_t(msbIndex);
+#else
                 uint32_t leadingZeros = __lzcnt(uint32_t(inMantissa));
+#endif
 #else
                 uint32_t leadingZeros = __builtin_clz(uint32_t(inMantissa));
 #endif
