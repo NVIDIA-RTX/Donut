@@ -102,17 +102,25 @@ find_path(_d3d_agility_include
     NO_SYSTEM_ENVIRONMENT_PATH
 )
 
+# Select the Agility SDK binary subdirectory that matches the target architecture.
+# The NuGet package ships build/native/bin/{x64,win32,arm64}.
+if (CMAKE_SYSTEM_PROCESSOR MATCHES "ARM64|arm64|aarch64" OR CMAKE_GENERATOR_PLATFORM MATCHES "ARM64|arm64")
+    set(_d3d_agility_arch "arm64")
+else()
+    set(_d3d_agility_arch "x64")
+endif()
+
 find_file(DONUT_D3D_AGILITY_SDK_CORE_DLL
     D3D12Core.dll
     PATHS
-        "${DONUT_D3D_AGILITY_SDK_PATH}/build/native/bin/x64"
+        "${DONUT_D3D_AGILITY_SDK_PATH}/build/native/bin/${_d3d_agility_arch}"
     NO_SYSTEM_ENVIRONMENT_PATH
 )
 
 find_file(DONUT_D3D_AGILITY_SDK_LAYERS_DLL
     d3d12SDKLayers.dll
     PATHS
-        "${DONUT_D3D_AGILITY_SDK_PATH}/build/native/bin/x64"
+        "${DONUT_D3D_AGILITY_SDK_PATH}/build/native/bin/${_d3d_agility_arch}"
     NO_SYSTEM_ENVIRONMENT_PATH
 )
 
