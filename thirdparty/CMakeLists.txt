@@ -56,6 +56,9 @@ if (DONUT_WITH_KTX AND NOT TARGET libzstd_static)
     )
     FetchContent_MakeAvailable(zstd)
     set_target_properties(libzstd_static PROPERTIES FOLDER ${third_party_folder})
+    # zstd installs its headers, .lib and cmake/pkgconfig files, which would
+    # otherwise land in a consuming project's package as include/ and lib/.
+    set_property(DIRECTORY "${zstd_SOURCE_DIR}/build/cmake" PROPERTY EXCLUDE_FROM_ALL YES)
 endif()
 
 if (NOT TARGET stb)
