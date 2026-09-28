@@ -768,7 +768,9 @@ bool DeviceManager_VK::createDevice()
     auto vulkan13features = vk::PhysicalDeviceVulkan13Features()
         .setDynamicRendering(true)
         .setSynchronization2(true)
-        .setMaintenance4(true);
+        .setMaintenance4(true)
+        // Streamline's Vulkan hooks create private data slots.
+        .setPrivateData(true);
 #if DONUT_WITH_AFTERMATH
     auto aftermathFeatures = vk::DeviceDiagnosticsConfigCreateInfoNV()
         .setFlags(vk::DeviceDiagnosticsConfigFlagBitsNV::eEnableResourceTracking

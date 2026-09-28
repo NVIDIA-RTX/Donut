@@ -38,7 +38,7 @@ if (MSVC)
     endif()
 endif()
 
-if (CMAKE_SYSTEM_PROCESSOR MATCHES "AMD64" OR CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64")
+if (CMAKE_CXX_COMPILER_ARCHITECTURE_ID MATCHES "^(x64|x86_64)$")
     if (CMAKE_CXX_COMPILER_ID MATCHES "GNU" OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
         string(APPEND CMAKE_CXX_FLAGS " -mf16c")
     endif()
@@ -63,11 +63,27 @@ option(DONUT_WITH_AUDIO "Include Audio features (XAudio2)" OFF)
 option(DONUT_WITH_TINYEXR "Include TinyEXR" ON)
 option(DONUT_WITH_UNIT_TESTS "Donut unit-tests (see CMake/CTest documentation)" OFF)
 
-option(DONUT_WITH_STREAMLINE "Enable Streamline, separate package required" OFF)
-set(DONUT_STREAMLINE_FETCH_URL "" CACHE STRING "URL to Streamline package to fetch from https://github.com/NVIDIA-RTX/Streamline/releases")
-set(DONUT_STREAMLINE_FETCH_SHA256 "" CACHE STRING "SHA256 hash of Streamline package from https://github.com/NVIDIA-RTX/Streamline/releases")
-set(DONUT_STREAMLINE_FETCH_DIR "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/streamline" CACHE STRING "Directory to fetch Streamline to, empty uses build directory default")
-set(DONUT_STREAMLINE_SEARCH_PATHS "" CACHE STRING "Search paths for Streamline package")
+option(DONUT_WITH_STREAMLINE "Enable Streamline, fetched automatically unless DONUT_STREAMLINE_SEARCH_PATHS is set" OFF)
+set(DONUT_STREAMLINE_SEARCH_PATHS "" CACHE STRING "Search paths for a pre-installed Streamline package")
+
+# The integration tracks Streamline's headers, so default to the version it was tested with.
+# Arm64 ships as a separate package.
+if (CMAKE_CXX_COMPILER_ARCHITECTURE_ID MATCHES "^(ARM64|arm64|aarch64)$")
+    set(_donut_sl_url "https://github.com/NVIDIA-RTX/Streamline/releases/download/v2.14.1/streamline-sdk-v2.14.1-aarch64.zip")
+    set(_donut_sl_sha256 "d51031bcdec88d482b6e113253e17d1f31cba47f683c0e2d7e6333578d4d3869")
+    set(_donut_sl_arch "arm64")
+else()
+    set(_donut_sl_url "https://github.com/NVIDIA-RTX/Streamline/releases/download/v2.14.1/streamline-sdk-v2.14.1.zip")
+    set(_donut_sl_sha256 "92c4d954631a1710da86ca3fa8d5034f2b9503838c95fc4ae977ae149319781b")
+    set(_donut_sl_arch "x64")
+endif()
+if (DONUT_STREAMLINE_SEARCH_PATHS)
+    set(_donut_sl_url "")
+    set(_donut_sl_sha256 "")
+endif()
+set(DONUT_STREAMLINE_FETCH_URL "${_donut_sl_url}" CACHE STRING "URL to Streamline package to fetch from https://github.com/NVIDIA-RTX/Streamline/releases")
+set(DONUT_STREAMLINE_FETCH_SHA256 "${_donut_sl_sha256}" CACHE STRING "SHA256 hash of Streamline package from https://github.com/NVIDIA-RTX/Streamline/releases")
+set(STREAMLINE_TARGET_ARCH "${_donut_sl_arch}" CACHE STRING "Streamline bin/lib subdirectory to use")
 
 option(DONUT_WITH_DLSS "Enable the NGX DLSS integration, separate package required" OFF)
 set(DONUT_DLSS_FETCH_URL "https://github.com/NVIDIA/DLSS.git" CACHE STRING "URL of the DLSS Git repository to fetch from")
@@ -156,12 +172,11 @@ if (DONUT_WITH_STREAMLINE)
     endif()
 
     if (DONUT_STREAMLINE_FETCH_URL AND DONUT_STREAMLINE_FETCH_SHA256)
-        message(STATUS "Updating Streamline from " ${DONUT_STREAMLINE_FETCH_URL} ", SHA256 " ${DONUT_STREAMLINE_FETCH_SHA256} ", into folder " ${DONUT_STREAMLINE_FETCH_DIR} " - please wait!" )
+        message(STATUS "Updating Streamline from " ${DONUT_STREAMLINE_FETCH_URL} ", SHA256 " ${DONUT_STREAMLINE_FETCH_SHA256} " - please wait!" )
         FetchContent_Declare(
             streamline
             URL ${DONUT_STREAMLINE_FETCH_URL}
             URL_HASH SHA256=${DONUT_STREAMLINE_FETCH_SHA256}
-            SOURCE_DIR ${DONUT_STREAMLINE_FETCH_DIR}
             DOWNLOAD_EXTRACT_TIMESTAMP TRUE
         )
         FetchContent_MakeAvailable(streamline)

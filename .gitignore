@@ -21,6 +21,5 @@ media
 **/*_d3d12.dir/*
 **/*_vk.dir/*
 **/Release/*
-thirdparty/streamline
 thirdparty/DLSS
 thirdparty/zstd

@@ -102,14 +102,12 @@ static void DescriptionCallback(PFN_GFSDK_Aftermath_AddGpuCrashDumpDescription a
 }
 
 // this callback should call into the nvrhi device which has the necessary information
-static void ResolveMarkerCallback(const void* pMarkerData, const uint32_t markerDataSize, void* pUserData, void** ppResolvedMarkerData, uint32_t* pResolvedMarkerDataSize)
+static void ResolveMarkerCallback(const void* pMarkerData, const uint32_t markerDataSize, void* pUserData, PFN_GFSDK_Aftermath_ResolveMarker resolveMarker)
 {
     donut::app::AftermathCrashDump* dumper = reinterpret_cast<donut::app::AftermathCrashDump*>(pUserData);
     const uint64_t markerAsHash = reinterpret_cast<const uint64_t>(pMarkerData);
-    // as long as the device is not yet destroyed, these references should be ok to pass back
     const std::string& resolvedMarker = dumper->ResolveMarker(markerAsHash);
-    *ppResolvedMarkerData = (void*) resolvedMarker.data();
-    *pResolvedMarkerDataSize = uint32_t(resolvedMarker.length());
+    resolveMarker(resolvedMarker.data(), uint32_t(resolvedMarker.length()));
 }
 
 void donut::app::AftermathCrashDump::WaitForCrashDump(uint32_t maxTimeoutSeconds)

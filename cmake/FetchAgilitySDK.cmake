@@ -104,7 +104,7 @@ find_path(_d3d_agility_include
 
 # Select the Agility SDK binary subdirectory that matches the target architecture.
 # The NuGet package ships build/native/bin/{x64,win32,arm64}.
-if (CMAKE_SYSTEM_PROCESSOR MATCHES "ARM64|arm64|aarch64" OR CMAKE_GENERATOR_PLATFORM MATCHES "ARM64|arm64")
+if (CMAKE_CXX_COMPILER_ARCHITECTURE_ID MATCHES "^(ARM64|arm64|aarch64)$")
     set(_d3d_agility_arch "arm64")
 else()
     set(_d3d_agility_arch "x64")
