@@ -8,8 +8,10 @@
 #include <donut/core/log.h>
 #include <donut/core/math/float.h>
 #include <donut/core/vfs/VFS.h>
+#include <donut/engine/GltfImporter.h>
 #include <donut/engine/Scene.h>
 #include <donut/engine/ShaderFactory.h>
+#include <donut/engine/TextureCache.h>
 #include <donut/render/DepthPass.h>
 #include <donut/render/GBufferFillPass.h>
 #include <donut/tests/utils.h>
@@ -23,6 +25,7 @@ using namespace donut::math;
 #include <donut/shaders/gbuffer_cb.h>
 
 #include <cstring>
+#include <cstdlib>
 #include <cmath>
 #include <limits>
 #include <atomic>
@@ -118,6 +121,76 @@ static void TestDescriptors()
     CHECK(position.format == nvrhi::Format::RGB32_FLOAT && position.elementStride == 12);
     buffers.texCoordFormat = TexCoordFormat::Unorm16;
     CHECK(buffers.getTexCoordStride() == 4);
+}
+
+static void TestImporterStoragePolicy()
+{
+    class ImportFileSystem : public vfs::NativeFileSystem
+    {
+    public:
+        std::shared_ptr<vfs::IBlob> readFile(const std::filesystem::path& name) override
+        {
+            static const char gltf[] = R"({
+                "asset":{"version":"2.0"},
+                "buffers":[{"uri":"uv.bin","byteLength":60}],
+                "bufferViews":[{"buffer":0,"byteLength":36},
+                    {"buffer":0,"byteOffset":36,"byteLength":24}],
+                "accessors":[{"bufferView":0,"componentType":5126,"count":3,"type":"VEC3",
+                    "min":[0,0,0],"max":[1,1,0]},
+                    {"bufferView":1,"componentType":5126,"count":3,"type":"VEC2"}],
+                "materials":[{}],
+                "meshes":[{"primitives":[{"attributes":{"POSITION":0,"TEXCOORD_0":1},"material":0}]}],
+                "nodes":[{"mesh":0}],"scenes":[{"nodes":[0]}],"scene":0
+            })";
+            static const float vertices[] = {
+                0.f, 0.f, 0.f, 1.f, 0.f, 0.f, 0.f, 1.f, 0.f,
+                -2.25f, 3.5f, 3000.125f, -7.f, 0.1234567f, 2.25f
+            };
+            const bool json = name.filename() == "uv.gltf";
+            if (!json && name.filename() != "uv.bin")
+                return nullptr;
+            const void* data = json ? static_cast<const void*>(gltf) : vertices;
+            const size_t size = json ? sizeof(gltf) - 1 : sizeof(vertices);
+            void* copy = std::malloc(size);
+            CHECK(copy != nullptr);
+            std::memcpy(copy, data, size);
+            return std::make_shared<vfs::Blob>(copy, size);
+        }
+    };
+    class ImportFactory : public SceneTypeFactory
+    {
+    public:
+        std::shared_ptr<MeshInfo> mesh;
+        std::shared_ptr<MeshInfo> CreateMesh() override
+        {
+            return mesh = SceneTypeFactory::CreateMesh();
+        }
+    };
+
+    auto fs = std::make_shared<ImportFileSystem>();
+    auto factory = std::make_shared<ImportFactory>();
+    TextureCache textures(nullptr, fs, nullptr);
+    SceneLoadingStats stats{};
+    const float2 expected[] = { float2(-2.25f, 3.5f), float2(3000.125f, -7.f), float2(0.1234567f, 2.25f) };
+    for (TexCoordFormat format : { TexCoordFormat::Float32, TexCoordFormat::Float16, TexCoordFormat::Unorm16 })
+    {
+        // Exercise the default constructor argument as well as both storage overrides.
+        const GltfImporter importer = format == TexCoordFormat::Float32
+            ? GltfImporter(fs, factory) : GltfImporter(fs, factory, format);
+        factory->mesh.reset();
+        SceneImportResult result;
+        CHECK(importer.Load("uv.gltf", textures, stats, nullptr, result));
+        CHECK(result.rootNode != nullptr && factory->mesh != nullptr);
+        const auto& buffers = *factory->mesh->buffers;
+        CHECK(buffers.texCoordFormat == format);
+        CHECK(buffers.vertexBuffer == nullptr && buffers.texcoord1Data.size() == 3);
+        // Storage selection must not quantize, normalize, or otherwise alter the imported CPU UVs.
+        for (size_t vertex = 0; vertex < 3; ++vertex)
+        {
+            CHECK(buffers.texcoord1Data[vertex].x == expected[vertex].x);
+            CHECK(buffers.texcoord1Data[vertex].y == expected[vertex].y);
+        }
+    }
 }
 
 static void TestDecodeRangeHints()
@@ -541,6 +614,7 @@ int main(int argc, char** argv)
     try
     {
         TestDescriptors();
+        TestImporterStoragePolicy();
         TestDecodeRangeHints();
         const char* shaderDirectory = nullptr;
         bool debugRuntime = false;

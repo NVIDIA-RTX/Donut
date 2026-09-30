@@ -32,8 +32,13 @@ DECLARE_CBUFFER(GBufferFillConstants, c_GBuffer, GBUFFER_BINDING_VIEW_CONSTANTS,
 
 DECLARE_PUSH_CONSTANTS(GBufferPushConstants, g_Push, GBUFFER_BINDING_PUSH_CONSTANTS, GBUFFER_SPACE_INPUT);
 
-// Floating-point IA inputs are decoded by the input layout and need no push constants.
-void input_assembler_float(
+// Selects the UV decoder template specialization for IA inputs.
+// Keep the decoding default when compiling without an IA permutation define.
+#ifndef DECODE_TEXCOORD
+#define DECODE_TEXCOORD 1
+#endif
+
+void input_assembler(
     in SceneVertex i_vtx,
     in float4 i_instanceMatrix0 : TRANSFORM0,
     in float4 i_instanceMatrix1 : TRANSFORM1,
@@ -67,30 +72,8 @@ void input_assembler_float(
     float4 viewPos = mul(worldPos, c_GBuffer.view.matWorldToView);
     o_position = mul(viewPos, c_GBuffer.view.matViewToClip);
     o_instance = i_instance;
-}
 
-void input_assembler(
-    in SceneVertex i_vtx,
-    in float4 i_instanceMatrix0 : TRANSFORM0,
-    in float4 i_instanceMatrix1 : TRANSFORM1,
-    in float4 i_instanceMatrix2 : TRANSFORM2,
-#if MOTION_VECTORS
-    in float4 i_prevInstanceMatrix0 : PREV_TRANSFORM0,
-    in float4 i_prevInstanceMatrix1 : PREV_TRANSFORM1,
-    in float4 i_prevInstanceMatrix2 : PREV_TRANSFORM2,
-#endif
-    in uint i_instance : SV_InstanceID,
-    out float4 o_position : SV_Position,
-    out SceneVertex o_vtx,
-    out uint o_instance : INSTANCE
-)
-{
-    input_assembler_float(i_vtx, i_instanceMatrix0, i_instanceMatrix1, i_instanceMatrix2,
-#if MOTION_VECTORS
-        i_prevInstanceMatrix0, i_prevInstanceMatrix1, i_prevInstanceMatrix2,
-#endif
-        i_instance, o_position, o_vtx, o_instance);
-    o_vtx.texCoord = DecodeTexCoord(o_vtx.texCoord, g_Push.texCoordFormat, g_Push.texCoordScaleBias);
+    o_vtx.texCoord = DecodeTexCoord<DECODE_TEXCOORD != 0>(o_vtx.texCoord, g_Push.texCoordFormat, g_Push.texCoordScaleBias);
 }
 
 // Use a raw buffer on DX11 to avoid adding the StructuredBuffer flag to the instance buffer.

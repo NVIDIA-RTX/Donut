@@ -64,9 +64,11 @@ public:
 
 
 
-GltfImporter::GltfImporter(std::shared_ptr<vfs::IFileSystem> fs, std::shared_ptr<SceneTypeFactory> sceneTypeFactory)
+GltfImporter::GltfImporter(std::shared_ptr<vfs::IFileSystem> fs,
+    std::shared_ptr<SceneTypeFactory> sceneTypeFactory, TexCoordFormat texCoordFormat)
     : m_fs(std::move(fs))
     , m_SceneTypeFactory(std::move(sceneTypeFactory))
+    , m_TexCoordFormat(texCoordFormat)
 {
 }
 
@@ -643,8 +645,7 @@ bool GltfImporter::Load(
     TextureCache& textureCache,
     SceneLoadingStats& stats,
     ThreadPool* threadPool,
-    SceneImportResult& result,
-    TexCoordFormat texCoordFormat) const
+    SceneImportResult& result) const
 {
     // Set this to 'true' if you need to fix broken tangents in a model.
     // Patched buffers will be saved alongside the gltf file, named like "<scene-name>.buffer<N>.bin"
@@ -1057,7 +1058,7 @@ bool GltfImporter::Load(
     }
 
     auto buffers = std::make_shared<BufferGroup>();
-    buffers->texCoordFormat = texCoordFormat;
+    buffers->texCoordFormat = m_TexCoordFormat;
 
     buffers->indexData.resize(totalIndices);
     buffers->positionData.resize(totalVertices);

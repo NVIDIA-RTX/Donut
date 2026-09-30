@@ -30,8 +30,13 @@ DECLARE_CBUFFER(DepthPassConstants, g_Depth, DEPTH_BINDING_VIEW_CONSTANTS, DEPTH
 
 DECLARE_PUSH_CONSTANTS(DepthPushConstants, g_Push, DEPTH_BINDING_PUSH_CONSTANTS, DEPTH_SPACE_INPUT);
 
-// Floating-point IA inputs are decoded by the input layout and need no push constants.
-void input_assembler_float(
+// Selects the UV decoder template specialization for IA inputs.
+// Keep the decoding default when compiling without an IA permutation define.
+#ifndef DECODE_TEXCOORD
+#define DECODE_TEXCOORD 1
+#endif
+
+void input_assembler(
 	in float3 i_pos : POSITION,
     in float2 i_texCoord : TEXCOORD,
     in float3x4 i_instanceMatrix : TRANSFORM,
@@ -44,19 +49,7 @@ void input_assembler_float(
 	float4 worldPos = float4(mul(instanceMatrix, float4(i_pos, 1.0)), 1.0);
 	o_position = mul(worldPos, g_Depth.matWorldToClip);
 
-    o_texCoord = i_texCoord;
-}
-
-void input_assembler(
-	in float3 i_pos : POSITION,
-    in float2 i_texCoord : TEXCOORD,
-    in float3x4 i_instanceMatrix : TRANSFORM,
-	in uint i_instance : SV_InstanceID,
-    out float4 o_position : SV_Position,
-    out float2 o_texCoord : TEXCOORD)
-{
-    input_assembler_float(i_pos, i_texCoord, i_instanceMatrix, i_instance, o_position, o_texCoord);
-    o_texCoord = DecodeTexCoord(o_texCoord, g_Push.texCoordFormat, g_Push.texCoordScaleBias);
+    o_texCoord = DecodeTexCoord<DECODE_TEXCOORD != 0>(i_texCoord, g_Push.texCoordFormat, g_Push.texCoordScaleBias);
 }
 
 // Use a raw buffer on DX11 to avoid adding the StructuredBuffer flag to the instance buffer.

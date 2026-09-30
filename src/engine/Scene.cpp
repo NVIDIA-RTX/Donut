@@ -130,6 +130,11 @@ Scene::Scene(
     }
 }
 
+void Scene::SetDefaultTexCoordFormat(TexCoordFormat format)
+{
+    m_GltfImporter = std::make_shared<GltfImporter>(m_fs, m_SceneTypeFactory, format);
+}
+
 bool Scene::Load(const std::filesystem::path& jsonFileName)
 {
     ThreadPool threadPool;
@@ -194,13 +199,14 @@ void Scene::LoadModelAsync(
     const std::filesystem::path& fileName,
     ThreadPool* threadPool)
 {   
-    const TexCoordFormat texCoordFormat = m_DefaultTexCoordFormat;
+    // Retain the import settings for this model even if a later load changes the default.
+    const auto importer = m_GltfImporter;
     if (threadPool)
     {
-        threadPool->AddTask([this, index, threadPool, fileName, texCoordFormat]()
+        threadPool->AddTask([this, index, threadPool, fileName, importer]()
         {
             SceneImportResult result;
-            m_GltfImporter->Load(fileName, *m_TextureCache, g_LoadingStats, threadPool, result, texCoordFormat);
+            importer->Load(fileName, *m_TextureCache, g_LoadingStats, threadPool, result);
             ++g_LoadingStats.ObjectsLoaded;
             m_Models[index] = result;
         });
@@ -208,7 +214,7 @@ void Scene::LoadModelAsync(
     else
     {
         SceneImportResult result;
-        m_GltfImporter->Load(fileName, *m_TextureCache, g_LoadingStats, threadPool, result, texCoordFormat);
+        importer->Load(fileName, *m_TextureCache, g_LoadingStats, threadPool, result);
         ++g_LoadingStats.ObjectsLoaded;
         m_Models[index] = result;
     }

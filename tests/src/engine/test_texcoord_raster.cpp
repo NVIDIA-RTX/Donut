@@ -85,9 +85,6 @@ namespace
         uint32_t unorm16LayoutCount = 0;
 
     protected:
-        // These adapters only replace the pixel shader; the stock vertex path is safe.
-        bool SupportsInputAssemblerTexCoordSpecialization() const override { return true; }
-
         nvrhi::ShaderHandle CreatePixelShader(ShaderFactory& factory, const CreateParameters&) override
         {
             return CreateTestPixelShader(factory, "depth");
@@ -110,8 +107,6 @@ namespace
         void ClearMaterialBindings() { m_MaterialBindings->Clear(); }
 
     protected:
-        bool SupportsInputAssemblerTexCoordSpecialization() const override { return true; }
-
         nvrhi::ShaderHandle CreatePixelShader(ShaderFactory& factory, const CreateParameters&, bool) override
         {
             return CreateTestPixelShader(factory);
@@ -125,8 +120,6 @@ namespace
         void ClearMaterialBindings() { m_MaterialBindings->Clear(); }
 
     protected:
-        bool SupportsInputAssemblerTexCoordSpecialization() const override { return true; }
-
         nvrhi::ShaderHandle CreatePixelShader(ShaderFactory& factory, const CreateParameters&, bool) override
         {
             return CreateTestPixelShader(factory);
@@ -552,6 +545,8 @@ static bool RunGpu(const std::filesystem::path& shaderPath, const std::filesyste
         TestDepthPass depthPass(device, common);
         DepthPass::CreateParameters depthParams;
         depthParams.useInputAssembler = inputAssembler;
+        // These adapters only replace the pixel shader; the stock vertex path is safe.
+        depthParams.specializeInputAssemblerTexCoords = true;
         depthPass.Init(*factory, depthParams);
         passed &= depthPass.float16LayoutCount == 0; // Legacy FP32 layouts must not eagerly require an FP16 layout.
         passed &= depthPass.unorm16LayoutCount == 0;
@@ -563,6 +558,7 @@ static bool RunGpu(const std::filesystem::path& shaderPath, const std::filesyste
         TestForwardPass forwardPass(device, common);
         ForwardShadingPass::CreateParameters forwardParams;
         forwardParams.useInputAssembler = inputAssembler;
+        forwardParams.specializeInputAssemblerTexCoords = true;
         forwardPass.Init(*factory, forwardParams);
         ForwardShadingPass::Context forwardContext;
         passed &= fixture.ExercisePass(device, forwardPass, forwardContext, inputAssembler ? "Forward IA mixed UV formats" : "Forward raw mixed UV formats", &forwardPass);
@@ -573,6 +569,7 @@ static bool RunGpu(const std::filesystem::path& shaderPath, const std::filesyste
             GBufferFillPass::CreateParameters gbufferParams;
             gbufferParams.useInputAssembler = inputAssembler;
             gbufferParams.enableMotionVectors = motionVectors;
+            gbufferParams.specializeInputAssemblerTexCoords = true;
             gbufferPass.Init(*factory, gbufferParams);
             GBufferFillPass::Context gbufferContext;
             const char* name = inputAssembler
@@ -581,6 +578,18 @@ static bool RunGpu(const std::filesystem::path& shaderPath, const std::filesyste
             passed &= fixture.ExercisePass(device, gbufferPass, gbufferContext, name);
         }
 
+        if (inputAssembler)
+        {
+            TestDepthPass genericDepthPass(device, common);
+            depthParams.specializeInputAssemblerTexCoords = false;
+            genericDepthPass.Init(*factory, depthParams);
+            DepthPass::Context genericDepthContext;
+            passed &= fixture.ExercisePass(device, genericDepthPass, genericDepthContext,
+                "Depth IA specialization disabled");
+        }
+
+        // A custom vertex shader keeps the automatic, unspecialized default.
+        depthParams.specializeInputAssemblerTexCoords.reset();
         LegacyDepthPass legacyPass(device, common);
         legacyPass.Init(*factory, depthParams);
         DepthPass::Context legacyContext;

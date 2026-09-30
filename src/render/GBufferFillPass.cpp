@@ -39,7 +39,6 @@
 #include "compiled_shaders/passes/cubemap_gs.dxbc.h"
 #include "compiled_shaders/passes/gbuffer_ps.dxbc.h"
 #include "compiled_shaders/passes/gbuffer_vs_input_assembler.dxbc.h"
-#include "compiled_shaders/passes/gbuffer_vs_input_assembler_float.dxbc.h"
 #include "compiled_shaders/passes/gbuffer_vs_buffer_loads.dxbc.h"
 #include "compiled_shaders/passes/material_id_ps.dxbc.h"
 #endif
@@ -47,7 +46,6 @@
 #include "compiled_shaders/passes/cubemap_gs.dxil.h"
 #include "compiled_shaders/passes/gbuffer_ps.dxil.h"
 #include "compiled_shaders/passes/gbuffer_vs_input_assembler.dxil.h"
-#include "compiled_shaders/passes/gbuffer_vs_input_assembler_float.dxil.h"
 #include "compiled_shaders/passes/gbuffer_vs_buffer_loads.dxil.h"
 #include "compiled_shaders/passes/material_id_ps.dxil.h"
 #endif
@@ -55,7 +53,6 @@
 #include "compiled_shaders/passes/cubemap_gs.spirv.h"
 #include "compiled_shaders/passes/gbuffer_ps.spirv.h"
 #include "compiled_shaders/passes/gbuffer_vs_input_assembler.spirv.h"
-#include "compiled_shaders/passes/gbuffer_vs_input_assembler_float.spirv.h"
 #include "compiled_shaders/passes/gbuffer_vs_buffer_loads.spirv.h"
 #include "compiled_shaders/passes/material_id_ps.spirv.h"
 #endif
@@ -83,7 +80,8 @@ void GBufferFillPass::Init(ShaderFactory& shaderFactory, const CreateParameters&
     if (params.enableSinglePassCubemap)
         m_SupportedViewTypes = ViewType::Enum(m_SupportedViewTypes | ViewType::CUBEMAP);
     
-    m_SpecializeInputAssemblerTexCoords = m_UseInputAssembler && SupportsInputAssemblerTexCoordSpecialization();
+    m_SpecializeInputAssemblerTexCoords = m_UseInputAssembler
+        && params.specializeInputAssemblerTexCoords.value_or(typeid(*this) == typeid(GBufferFillPass));
     m_VertexShaderFloat = nullptr;
     m_InputBindingLayoutFloat = nullptr;
     m_InputBindingSetFloat = nullptr;
@@ -92,17 +90,18 @@ void GBufferFillPass::Init(ShaderFactory& shaderFactory, const CreateParameters&
     {
         std::vector<ShaderMacro> macros;
         macros.emplace_back("MOTION_VECTORS", params.enableMotionVectors ? "1" : "0");
-        m_VertexShaderFloat = shaderFactory.CreateAutoShader("donut/passes/gbuffer_vs.hlsl", "input_assembler_float",
-            DONUT_MAKE_PLATFORM_SHADER(g_gbuffer_vs_input_assembler_float), &macros, nvrhi::ShaderType::Vertex);
+        macros.emplace_back("DECODE_TEXCOORD", "0");
+        m_VertexShaderFloat = shaderFactory.CreateAutoShader("donut/passes/gbuffer_vs.hlsl", "input_assembler",
+            DONUT_MAKE_PLATFORM_SHADER(g_gbuffer_vs_input_assembler), &macros, nvrhi::ShaderType::Vertex);
         if (!m_VertexShaderFloat)
             m_SpecializeInputAssemblerTexCoords = false;
     }
 
     m_VertexShader = CreateVertexShader(shaderFactory, params);
-    m_InputLayout = CreateInputLayout(m_SpecializeInputAssemblerTexCoords ? m_VertexShaderFloat : m_VertexShader, params);
+    m_InputLayouts = {};
+    m_InputLayouts[size_t(TexCoordFormat::Float32)] = CreateInputLayout(
+        m_SpecializeInputAssemblerTexCoords ? m_VertexShaderFloat : m_VertexShader, params);
     m_CreateParameters = params;
-    m_InputLayoutFloat16 = nullptr;
-    m_InputLayoutUnorm16 = nullptr;
     m_GeometryShader = CreateGeometryShader(shaderFactory, params);
     m_PixelShader = CreatePixelShader(shaderFactory, params, false);
     m_PixelShaderAlphaTested = CreatePixelShader(shaderFactory, params, true);
@@ -138,13 +137,6 @@ void GBufferFillPass::ResetBindingCache()
     m_InputBindingSets.clear();
 }
 
-bool GBufferFillPass::SupportsInputAssemblerTexCoordSpecialization() const
-{
-    // A derived pass may replace any shader or binding factory. Preserve that
-    // contract unless the derived class explicitly opts into the stock fast path.
-    return typeid(*this) == typeid(GBufferFillPass);
-}
-
 nvrhi::ShaderHandle GBufferFillPass::CreateVertexShader(ShaderFactory& shaderFactory, const CreateParameters& params)
 {
     char const* sourceFileName = "donut/passes/gbuffer_vs.hlsl";
@@ -154,6 +146,7 @@ nvrhi::ShaderHandle GBufferFillPass::CreateVertexShader(ShaderFactory& shaderFac
 
     if (params.useInputAssembler)
     {
+        VertexShaderMacros.emplace_back("DECODE_TEXCOORD", "1");
         return shaderFactory.CreateAutoShader(sourceFileName, "input_assembler",
             DONUT_MAKE_PLATFORM_SHADER(g_gbuffer_vs_input_assembler), &VertexShaderMacros, nvrhi::ShaderType::Vertex);
     }
@@ -254,8 +247,9 @@ nvrhi::GraphicsPipelineHandle GBufferFillPass::CreateGraphicsPipeline(PipelineKe
     const auto texCoordFormat = static_cast<TexCoordFormat>(key.bits.texCoordFormat);
     const bool floatingInput = m_SpecializeInputAssemblerTexCoords && texCoordFormat != TexCoordFormat::Unorm16;
     const auto& vertexShader = floatingInput ? m_VertexShaderFloat : m_VertexShader;
-    auto& inputLayout = texCoordFormat == TexCoordFormat::Float16 ? m_InputLayoutFloat16
-        : texCoordFormat == TexCoordFormat::Unorm16 ? m_InputLayoutUnorm16 : m_InputLayout;
+    if (size_t(texCoordFormat) >= m_InputLayouts.size())
+        return nullptr;
+    auto& inputLayout = m_InputLayouts[size_t(texCoordFormat)];
 
     if (texCoordFormat != TexCoordFormat::Float32 && !inputLayout)
     {

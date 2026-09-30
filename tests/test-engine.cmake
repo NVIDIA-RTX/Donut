@@ -48,6 +48,8 @@ donut_compile_shaders_all_platforms(
     FOLDER Donut/donut_tests
     OUTPUT_BASE ${CMAKE_CURRENT_BINARY_DIR}/shaders
     OUTPUT_FORMAT BINARY
+    SHADERMAKE_OPTIONS_DXIL "--hlsl2021"
+    SHADERMAKE_OPTIONS_SPIRV "--hlsl2021"
     SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/src/engine/shaders/texcoords_cs.hlsl
         ${CMAKE_CURRENT_SOURCE_DIR}/src/engine/shaders/texcoord_raster.hlsl)
 add_dependencies(test_texcoords donut_test_texcoord_shaders)

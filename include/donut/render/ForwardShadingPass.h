@@ -25,8 +25,10 @@
 #include <donut/engine/View.h>
 #include <donut/engine/SceneTypes.h>
 #include <donut/render/GeometryPasses.h>
+#include <array>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <unordered_map>
 
 namespace donut::engine
@@ -130,15 +132,18 @@ namespace donut::render
             // Using Buffer SRVs is often faster.
             bool useInputAssembler = false;
 
+            // Unset specializes only the stock pass. Derived passes may opt in if they use
+            // stock vertex/input bindings and no custom shader or draw code needs input push constants.
+            std::optional<bool> specializeInputAssemblerTexCoords;
+
             uint32_t numConstantBufferVersions = 16;
         };
 
 
     protected:
         nvrhi::DeviceHandle m_Device;
-        nvrhi::InputLayoutHandle m_InputLayout;
-        nvrhi::InputLayoutHandle m_InputLayoutFloat16;
-        nvrhi::InputLayoutHandle m_InputLayoutUnorm16;
+        // Indexed by TexCoordFormat to cache layouts for mixed-format scenes.
+        std::array<nvrhi::InputLayoutHandle, size_t(engine::TexCoordFormat::Count)> m_InputLayouts;
         CreateParameters m_CreateParameters;
         nvrhi::ShaderHandle m_VertexShader;
         nvrhi::ShaderHandle m_VertexShaderFloat;
@@ -169,12 +174,6 @@ namespace donut::render
         std::shared_ptr<engine::CommonRenderPasses> m_CommonPasses;
         std::shared_ptr<engine::MaterialBindingCache> m_MaterialBindings;
         
-        // Stock passes specialize floating-point IA inputs to omit push constants.
-        // Derived passes retain their existing shader/binding behavior by default.
-        // Opt in only when using the stock vertex/input bindings and when no other
-        // shader stage or custom draw code depends on the input push constants.
-        virtual bool SupportsInputAssemblerTexCoordSpecialization() const;
-
         virtual nvrhi::ShaderHandle CreateVertexShader(engine::ShaderFactory& shaderFactory, const CreateParameters& params);
         virtual nvrhi::ShaderHandle CreateGeometryShader(engine::ShaderFactory& shaderFactory, const CreateParameters& params);
         virtual nvrhi::ShaderHandle CreatePixelShader(engine::ShaderFactory& shaderFactory, const CreateParameters& params, bool transmissiveMaterial);

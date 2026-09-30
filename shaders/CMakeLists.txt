@@ -56,18 +56,15 @@ set(byproducts
 	passes/deferred_lighting_cs
 	passes/depth_ps
 	passes/depth_vs_input_assembler
-	passes/depth_vs_input_assembler_float
 	passes/depth_vs_buffer_loads
 	passes/dlss_exposure_cs
 	passes/environment_map_ps
 	passes/exposure_cs
 	passes/forward_ps
 	passes/forward_vs_input_assembler
-	passes/forward_vs_input_assembler_float
 	passes/forward_vs_buffer_loads
 	passes/gbuffer_ps
 	passes/gbuffer_vs_input_assembler
-	passes/gbuffer_vs_input_assembler_float
 	passes/gbuffer_vs_buffer_loads
 	passes/manipulator_vs_main
 	passes/manipulator_gs_main
@@ -107,4 +104,6 @@ donut_compile_shaders_all_platforms(
 	SOURCES ${donut_shaders}
 	BYPRODUCTS_NO_EXT ${byproducts}
     SHADERMAKE_OPTIONS ${shadermake_options}
+    SHADERMAKE_OPTIONS_DXIL "--hlsl2021"
+    SHADERMAKE_OPTIONS_SPIRV "--hlsl2021"
 )

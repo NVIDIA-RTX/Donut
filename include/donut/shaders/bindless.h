@@ -116,8 +116,13 @@ float2 LoadTexCoord(ByteAddressBuffer buffer, uint baseOffset, uint vertexIndex,
 }
 
 // Also used for UNORM16 attributes converted to [0, 1] by the input assembler.
+// Floating-point IA variants disable decoding and discard its push-constant inputs.
+template<bool enableDecode = true>
 float2 DecodeTexCoord(float2 texCoord, uint format, float4 scaleBias)
 {
+    if (!enableDecode)
+        return texCoord;
+
     return format == c_TexCoordFormat_Unorm16 ? texCoord * scaleBias.xy + scaleBias.zw : texCoord;
 }
 

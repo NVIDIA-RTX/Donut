@@ -39,21 +39,18 @@
 #include "compiled_shaders/passes/cubemap_gs.dxbc.h"
 #include "compiled_shaders/passes/forward_ps.dxbc.h"
 #include "compiled_shaders/passes/forward_vs_input_assembler.dxbc.h"
-#include "compiled_shaders/passes/forward_vs_input_assembler_float.dxbc.h"
 #include "compiled_shaders/passes/forward_vs_buffer_loads.dxbc.h"
 #endif
 #if DONUT_WITH_DX12
 #include "compiled_shaders/passes/cubemap_gs.dxil.h"
 #include "compiled_shaders/passes/forward_ps.dxil.h"
 #include "compiled_shaders/passes/forward_vs_input_assembler.dxil.h"
-#include "compiled_shaders/passes/forward_vs_input_assembler_float.dxil.h"
 #include "compiled_shaders/passes/forward_vs_buffer_loads.dxil.h"
 #endif
 #if DONUT_WITH_VULKAN
 #include "compiled_shaders/passes/cubemap_gs.spirv.h"
 #include "compiled_shaders/passes/forward_ps.spirv.h"
 #include "compiled_shaders/passes/forward_vs_input_assembler.spirv.h"
-#include "compiled_shaders/passes/forward_vs_input_assembler_float.spirv.h"
 #include "compiled_shaders/passes/forward_vs_buffer_loads.spirv.h"
 #endif
 #endif
@@ -82,25 +79,26 @@ void ForwardShadingPass::Init(ShaderFactory& shaderFactory, const CreateParamete
     if (params.singlePassCubemap)
         m_SupportedViewTypes = ViewType::CUBEMAP;
     
-    m_SpecializeInputAssemblerTexCoords = m_UseInputAssembler && SupportsInputAssemblerTexCoordSpecialization();
+    m_SpecializeInputAssemblerTexCoords = m_UseInputAssembler
+        && params.specializeInputAssemblerTexCoords.value_or(typeid(*this) == typeid(ForwardShadingPass));
     m_VertexShaderFloat = nullptr;
     m_InputBindingLayoutFloat = nullptr;
     m_InputBindingSetFloat = nullptr;
     m_InputBindingSetUnorm = nullptr;
     if (m_SpecializeInputAssemblerTexCoords)
     {
-        std::vector<ShaderMacro> macros;
-        m_VertexShaderFloat = shaderFactory.CreateAutoShader("donut/passes/forward_vs.hlsl", "input_assembler_float",
-            DONUT_MAKE_PLATFORM_SHADER(g_forward_vs_input_assembler_float), &macros, nvrhi::ShaderType::Vertex);
+        std::vector<ShaderMacro> macros = { { "DECODE_TEXCOORD", "0" } };
+        m_VertexShaderFloat = shaderFactory.CreateAutoShader("donut/passes/forward_vs.hlsl", "input_assembler",
+            DONUT_MAKE_PLATFORM_SHADER(g_forward_vs_input_assembler), &macros, nvrhi::ShaderType::Vertex);
         if (!m_VertexShaderFloat)
             m_SpecializeInputAssemblerTexCoords = false;
     }
 
     m_VertexShader = CreateVertexShader(shaderFactory, params);
-    m_InputLayout = CreateInputLayout(m_SpecializeInputAssemblerTexCoords ? m_VertexShaderFloat : m_VertexShader, params);
+    m_InputLayouts = {};
+    m_InputLayouts[size_t(TexCoordFormat::Float32)] = CreateInputLayout(
+        m_SpecializeInputAssemblerTexCoords ? m_VertexShaderFloat : m_VertexShader, params);
     m_CreateParameters = params;
-    m_InputLayoutFloat16 = nullptr;
-    m_InputLayoutUnorm16 = nullptr;
     m_GeometryShader = CreateGeometryShader(shaderFactory, params);
     m_PixelShader = CreatePixelShader(shaderFactory, params, false);
     m_PixelShaderTransmissive = CreatePixelShader(shaderFactory, params, true);
@@ -140,21 +138,15 @@ void ForwardShadingPass::ResetBindingCache()
     m_InputBindingSets.clear();
 }
 
-bool ForwardShadingPass::SupportsInputAssemblerTexCoordSpecialization() const
-{
-    // A derived pass may replace any shader or binding factory. Preserve that
-    // contract unless the derived class explicitly opts into the stock fast path.
-    return typeid(*this) == typeid(ForwardShadingPass);
-}
-
 nvrhi::ShaderHandle ForwardShadingPass::CreateVertexShader(ShaderFactory& shaderFactory, const CreateParameters& params)
 {
     char const* sourceFileName = "donut/passes/forward_vs.hlsl";
 
     if (params.useInputAssembler)
     {
+        std::vector<ShaderMacro> macros = { { "DECODE_TEXCOORD", "1" } };
         return shaderFactory.CreateAutoShader(sourceFileName, "input_assembler",
-            DONUT_MAKE_PLATFORM_SHADER(g_forward_vs_input_assembler), nullptr, nvrhi::ShaderType::Vertex);
+            DONUT_MAKE_PLATFORM_SHADER(g_forward_vs_input_assembler), &macros, nvrhi::ShaderType::Vertex);
     }
     else
     {
@@ -284,8 +276,9 @@ nvrhi::GraphicsPipelineHandle ForwardShadingPass::CreateGraphicsPipeline(Forward
 {
     const bool floatingInput = m_SpecializeInputAssemblerTexCoords && key.texCoordFormat != TexCoordFormat::Unorm16;
     const auto& vertexShader = floatingInput ? m_VertexShaderFloat : m_VertexShader;
-    auto& inputLayout = key.texCoordFormat == TexCoordFormat::Float16 ? m_InputLayoutFloat16
-        : key.texCoordFormat == TexCoordFormat::Unorm16 ? m_InputLayoutUnorm16 : m_InputLayout;
+    if (size_t(key.texCoordFormat) >= m_InputLayouts.size())
+        return nullptr;
+    auto& inputLayout = m_InputLayouts[size_t(key.texCoordFormat)];
 
     if (key.texCoordFormat != TexCoordFormat::Float32 && !inputLayout)
     {

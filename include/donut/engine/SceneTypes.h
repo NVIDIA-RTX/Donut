@@ -196,7 +196,9 @@ namespace donut::engine
     {
         Float32 = 0,
         Float16 = 1,
-        Unorm16 = 2
+        Unorm16 = 2,
+
+        Count
     };
 
     nvrhi::VertexAttributeDesc GetVertexAttributeDesc(VertexAttribute attribute, const char* name, uint32_t bufferIndex,

@@ -35,19 +35,16 @@
 #if DONUT_WITH_STATIC_SHADERS
 #if DONUT_WITH_DX11
 #include "compiled_shaders/passes/depth_vs_input_assembler.dxbc.h"
-#include "compiled_shaders/passes/depth_vs_input_assembler_float.dxbc.h"
 #include "compiled_shaders/passes/depth_vs_buffer_loads.dxbc.h"
 #include "compiled_shaders/passes/depth_ps.dxbc.h"
 #endif
 #if DONUT_WITH_DX12
 #include "compiled_shaders/passes/depth_vs_input_assembler.dxil.h"
-#include "compiled_shaders/passes/depth_vs_input_assembler_float.dxil.h"
 #include "compiled_shaders/passes/depth_vs_buffer_loads.dxil.h"
 #include "compiled_shaders/passes/depth_ps.dxil.h"
 #endif
 #if DONUT_WITH_VULKAN
 #include "compiled_shaders/passes/depth_vs_input_assembler.spirv.h"
-#include "compiled_shaders/passes/depth_vs_input_assembler_float.spirv.h"
 #include "compiled_shaders/passes/depth_vs_buffer_loads.spirv.h"
 #include "compiled_shaders/passes/depth_ps.spirv.h"
 #endif
@@ -73,26 +70,27 @@ void DepthPass::Init(ShaderFactory& shaderFactory, const CreateParameters& param
 {
     m_UseInputAssembler = params.useInputAssembler;
 
-    m_SpecializeInputAssemblerTexCoords = m_UseInputAssembler && SupportsInputAssemblerTexCoordSpecialization();
+    m_SpecializeInputAssemblerTexCoords = m_UseInputAssembler
+        && params.specializeInputAssemblerTexCoords.value_or(typeid(*this) == typeid(DepthPass));
     m_VertexShaderFloat = nullptr;
     m_InputBindingLayoutFloat = nullptr;
     m_InputBindingSetFloat = nullptr;
     m_InputBindingSetUnorm = nullptr;
     if (m_SpecializeInputAssemblerTexCoords)
     {
-        std::vector<ShaderMacro> macros;
-        m_VertexShaderFloat = shaderFactory.CreateAutoShader("donut/passes/depth_vs.hlsl", "input_assembler_float",
-            DONUT_MAKE_PLATFORM_SHADER(g_depth_vs_input_assembler_float), &macros, nvrhi::ShaderType::Vertex);
+        std::vector<ShaderMacro> macros = { { "DECODE_TEXCOORD", "0" } };
+        m_VertexShaderFloat = shaderFactory.CreateAutoShader("donut/passes/depth_vs.hlsl", "input_assembler",
+            DONUT_MAKE_PLATFORM_SHADER(g_depth_vs_input_assembler), &macros, nvrhi::ShaderType::Vertex);
         if (!m_VertexShaderFloat)
             m_SpecializeInputAssemblerTexCoords = false;
     }
 
     m_VertexShader = CreateVertexShader(shaderFactory, params);
     m_PixelShader = CreatePixelShader(shaderFactory, params);
-    m_InputLayout = CreateInputLayout(m_SpecializeInputAssemblerTexCoords ? m_VertexShaderFloat : m_VertexShader, params);
+    m_InputLayouts = {};
+    m_InputLayouts[size_t(TexCoordFormat::Float32)] = CreateInputLayout(
+        m_SpecializeInputAssemblerTexCoords ? m_VertexShaderFloat : m_VertexShader, params);
     m_CreateParameters = params;
-    m_InputLayoutFloat16 = nullptr;
-    m_InputLayoutUnorm16 = nullptr;
     m_InputBindingLayout = CreateInputBindingLayout();
     if (m_SpecializeInputAssemblerTexCoords)
     {
@@ -125,21 +123,15 @@ void DepthPass::ResetBindingCache()
     m_InputBindingSets.clear();
 }
 
-bool DepthPass::SupportsInputAssemblerTexCoordSpecialization() const
-{
-    // A derived pass may replace any shader or binding factory. Preserve that
-    // contract unless the derived class explicitly opts into the stock fast path.
-    return typeid(*this) == typeid(DepthPass);
-}
-
 nvrhi::ShaderHandle DepthPass::CreateVertexShader(ShaderFactory& shaderFactory, const CreateParameters& params)
 {
     char const* sourceFileName = "donut/passes/depth_vs.hlsl";
 
     if (params.useInputAssembler)
     {
+        std::vector<ShaderMacro> macros = { { "DECODE_TEXCOORD", "1" } };
         return shaderFactory.CreateAutoShader(sourceFileName, "input_assembler",
-            DONUT_MAKE_PLATFORM_SHADER(g_depth_vs_input_assembler), nullptr, nvrhi::ShaderType::Vertex);
+            DONUT_MAKE_PLATFORM_SHADER(g_depth_vs_input_assembler), &macros, nvrhi::ShaderType::Vertex);
     }
     else
     {
@@ -219,8 +211,9 @@ nvrhi::GraphicsPipelineHandle DepthPass::CreateGraphicsPipeline(PipelineKey key,
     const auto texCoordFormat = static_cast<TexCoordFormat>(key.bits.texCoordFormat);
     const bool floatingInput = m_SpecializeInputAssemblerTexCoords && texCoordFormat != TexCoordFormat::Unorm16;
     const auto& vertexShader = floatingInput ? m_VertexShaderFloat : m_VertexShader;
-    auto& inputLayout = texCoordFormat == TexCoordFormat::Float16 ? m_InputLayoutFloat16
-        : texCoordFormat == TexCoordFormat::Unorm16 ? m_InputLayoutUnorm16 : m_InputLayout;
+    if (size_t(texCoordFormat) >= m_InputLayouts.size())
+        return nullptr;
+    auto& inputLayout = m_InputLayouts[size_t(texCoordFormat)];
 
     if (texCoordFormat != TexCoordFormat::Float32 && !inputLayout)
     {

@@ -60,7 +60,6 @@ namespace donut::engine
         std::shared_ptr<SceneGraph> m_SceneGraph;
         std::shared_ptr<GltfImporter> m_GltfImporter;
         std::vector<SceneImportResult> m_Models;
-        TexCoordFormat m_DefaultTexCoordFormat = TexCoordFormat::Float32;
         bool m_EnableBindlessResources = false;
         bool m_UseResourceDescriptorHeapBindless = false;
         
@@ -125,7 +124,7 @@ namespace donut::engine
 
         // Affects subsequent model imports only. Call before Load/LoadWithThreadPool.
         // Existing BufferGroups can be configured individually before their first GPU upload.
-        void SetDefaultTexCoordFormat(TexCoordFormat format) { m_DefaultTexCoordFormat = format; }
+        void SetDefaultTexCoordFormat(TexCoordFormat format);
 
         // Processes animations, transforms, bounding boxes etc.
         void RefreshSceneGraph(uint32_t frameIndex);

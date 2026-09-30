@@ -33,8 +33,13 @@ DECLARE_CBUFFER(ForwardShadingViewConstants, g_ForwardView, FORWARD_BINDING_VIEW
 // Version of the vertex shader that uses the hardware Input Assembler to read vertex attributes and transforms.
 DECLARE_PUSH_CONSTANTS(ForwardPushConstants, g_Push, FORWARD_BINDING_PUSH_CONSTANTS, FORWARD_SPACE_INPUT);
 
-// Floating-point IA inputs are decoded by the input layout and need no push constants.
-void input_assembler_float(
+// Selects the UV decoder template specialization for IA inputs.
+// Keep the decoding default when compiling without an IA permutation define.
+#ifndef DECODE_TEXCOORD
+#define DECODE_TEXCOORD 1
+#endif
+
+void input_assembler(
 	in SceneVertex i_vtx,
     in float4 i_instanceMatrix0 : TRANSFORM0,
     in float4 i_instanceMatrix1 : TRANSFORM1,
@@ -53,20 +58,8 @@ void input_assembler_float(
 
     float4 worldPos = float4(o_vtx.pos, 1.0);
     o_position = mul(worldPos, g_ForwardView.view.matWorldToClip);
-}
 
-void input_assembler(
-	in SceneVertex i_vtx,
-    in float4 i_instanceMatrix0 : TRANSFORM0,
-    in float4 i_instanceMatrix1 : TRANSFORM1,
-    in float4 i_instanceMatrix2 : TRANSFORM2,
-    out float4 o_position : SV_Position,
-    out SceneVertex o_vtx
-)
-{
-    input_assembler_float(i_vtx, i_instanceMatrix0, i_instanceMatrix1, i_instanceMatrix2,
-        o_position, o_vtx);
-    o_vtx.texCoord = DecodeTexCoord(o_vtx.texCoord, g_Push.texCoordFormat, g_Push.texCoordScaleBias);
+    o_vtx.texCoord = DecodeTexCoord<DECODE_TEXCOORD != 0>(o_vtx.texCoord, g_Push.texCoordFormat, g_Push.texCoordScaleBias);
 }
 
 
