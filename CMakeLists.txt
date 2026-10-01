@@ -68,7 +68,8 @@ set(DONUT_STREAMLINE_SEARCH_PATHS "" CACHE STRING "Search paths for a pre-instal
 
 # The integration tracks Streamline's headers, so default to the version it was tested with.
 # Arm64 ships as a separate package.
-if (CMAKE_CXX_COMPILER_ARCHITECTURE_ID MATCHES "^(ARM64|arm64|aarch64)$")
+include("${CMAKE_CURRENT_SOURCE_DIR}/nvrhi/cmake/NvrhiTargetArch.cmake")
+if (NVRHI_TARGET_ARCH STREQUAL "arm64")
     set(_donut_sl_url "https://github.com/NVIDIA-RTX/Streamline/releases/download/v2.14.1/streamline-sdk-v2.14.1-aarch64.zip")
     set(_donut_sl_sha256 "d51031bcdec88d482b6e113253e17d1f31cba47f683c0e2d7e6333578d4d3869")
     set(_donut_sl_arch "arm64")
@@ -81,9 +82,14 @@ if (DONUT_STREAMLINE_SEARCH_PATHS)
     set(_donut_sl_url "")
     set(_donut_sl_sha256 "")
 endif()
-set(DONUT_STREAMLINE_FETCH_URL "${_donut_sl_url}" CACHE STRING "URL to Streamline package to fetch from https://github.com/NVIDIA-RTX/Streamline/releases")
-set(DONUT_STREAMLINE_FETCH_SHA256 "${_donut_sl_sha256}" CACHE STRING "SHA256 hash of Streamline package from https://github.com/NVIDIA-RTX/Streamline/releases")
+if (NOT DEFINED DONUT_STREAMLINE_FETCH_URL)
+    set(DONUT_STREAMLINE_FETCH_URL "${_donut_sl_url}")
+endif()
+if (NOT DEFINED DONUT_STREAMLINE_FETCH_SHA256)
+    set(DONUT_STREAMLINE_FETCH_SHA256 "${_donut_sl_sha256}")
+endif()
 set(STREAMLINE_TARGET_ARCH "${_donut_sl_arch}" CACHE STRING "Streamline bin/lib subdirectory to use")
+set(DONUT_STREAMLINE_FETCH_DIR "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/streamline/${_donut_sl_arch}" CACHE STRING "Directory to fetch Streamline to, empty uses build directory default")
 
 option(DONUT_WITH_DLSS "Enable the NGX DLSS integration, separate package required" OFF)
 set(DONUT_DLSS_FETCH_URL "https://github.com/NVIDIA/DLSS.git" CACHE STRING "URL of the DLSS Git repository to fetch from")
@@ -93,7 +99,7 @@ set(DONUT_DLSS_FETCH_DIR "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/DLSS" CACHE STR
 option(DONUT_WITH_KTX "Build KTX2 (BCn + Zstandard) texture loading support" ON)
 set(DONUT_ZSTD_FETCH_URL "https://github.com/facebook/zstd.git" CACHE STRING "URL of the Zstandard Git repository to fetch from")
 set(DONUT_ZSTD_FETCH_TAG "v1.5.6" CACHE STRING "Git commit hash or tag for Zstandard")
-set(DONUT_ZSTD_FETCH_DIR "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/zstd" CACHE STRING "Directory to fetch Zstandard to, empty uses build directory default")
+set(DONUT_ZSTD_FETCH_DIR "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/zstd/${NVRHI_TARGET_ARCH}" CACHE STRING "Directory to fetch Zstandard to, empty uses build directory default")
 
 if (WIN32)
     option(DONUT_FORCE_DISCRETE_GPU "Declare symbols to make the OS run the app on discrete GPU on laptops" OFF)
@@ -111,6 +117,9 @@ if (NOT TARGET ShaderMake)
         option(SHADERMAKE_FIND_DXC "" OFF)
     endif()
     option(SHADERMAKE_FIND_DXC_VK "" "${DONUT_WITH_VULKAN}")
+    if (NOT NVRHI_HOST_ARCH STREQUAL NVRHI_TARGET_ARCH)
+        option(SHADERMAKE_TOOL "" ON)
+    endif()
 
     add_subdirectory(ShaderMake)
 endif()
@@ -177,9 +186,11 @@ if (DONUT_WITH_STREAMLINE)
             streamline
             URL ${DONUT_STREAMLINE_FETCH_URL}
             URL_HASH SHA256=${DONUT_STREAMLINE_FETCH_SHA256}
+            SOURCE_DIR ${DONUT_STREAMLINE_FETCH_DIR}
             DOWNLOAD_EXTRACT_TIMESTAMP TRUE
         )
         FetchContent_MakeAvailable(streamline)
+        set_property(DIRECTORY "${streamline_SOURCE_DIR}" PROPERTY EXCLUDE_FROM_ALL YES)
     else ()
         if (DONUT_STREAMLINE_SEARCH_PATHS)
             set(STREAMLINE_SEARCH_PATHS ${DONUT_STREAMLINE_SEARCH_PATHS})
@@ -188,6 +199,7 @@ if (DONUT_WITH_STREAMLINE)
 
         if (STREAMLINE_FOUND)
             add_subdirectory(${STREAMLINE_SOURCE_DIR} ${CMAKE_BINARY_DIR}/streamline)
+            set_property(DIRECTORY "${STREAMLINE_SOURCE_DIR}" PROPERTY EXCLUDE_FROM_ALL YES)
         endif()
     endif()
 endif()

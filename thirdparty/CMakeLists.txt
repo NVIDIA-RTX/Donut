@@ -58,7 +58,10 @@ if (DONUT_WITH_KTX AND NOT TARGET libzstd_static)
     set_target_properties(libzstd_static PROPERTIES FOLDER ${third_party_folder})
     # zstd installs its headers, .lib and cmake/pkgconfig files, which would
     # otherwise land in a consuming project's package as include/ and lib/.
-    set_property(DIRECTORY "${zstd_SOURCE_DIR}/build/cmake" PROPERTY EXCLUDE_FROM_ALL YES)
+    option(DONUT_ZSTD_INSTALL "Install zstd headers, library and cmake package" OFF)
+    if (NOT DONUT_ZSTD_INSTALL)
+        set_property(DIRECTORY "${zstd_SOURCE_DIR}/build/cmake" PROPERTY EXCLUDE_FROM_ALL YES)
+    endif()
 endif()
 
 if (NOT TARGET stb)
