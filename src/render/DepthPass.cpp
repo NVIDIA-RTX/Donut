@@ -72,7 +72,7 @@ namespace
 }
 
 template<GeometryInputPolicy InputPolicy>
-DepthPassT<InputPolicy>::DepthPassT(
+DepthPassImpl<InputPolicy>::DepthPassImpl(
     nvrhi::IDevice* device,
     std::shared_ptr<CommonRenderPasses> commonPasses)
     : m_Device(device)
@@ -82,7 +82,7 @@ DepthPassT<InputPolicy>::DepthPassT(
 }
 
 template<GeometryInputPolicy InputPolicy>
-void DepthPassT<InputPolicy>::Init(ShaderFactory& shaderFactory, const CreateParameters& params)
+void DepthPassImpl<InputPolicy>::Init(ShaderFactory& shaderFactory, const CreateParameters& params)
 {
     m_UseInputAssembler = params.useInputAssembler;
 
@@ -122,14 +122,14 @@ void DepthPassT<InputPolicy>::Init(ShaderFactory& shaderFactory, const CreatePar
 }
 
 template<GeometryInputPolicy InputPolicy>
-void DepthPassT<InputPolicy>::ResetBindingCache()
+void DepthPassImpl<InputPolicy>::ResetBindingCache()
 {
     m_MaterialBindings->Clear();
     m_Input.ResetBindingCache();
 }
 
 template<GeometryInputPolicy InputPolicy>
-nvrhi::ShaderHandle DepthPassT<InputPolicy>::CreateVertexShader(ShaderFactory& shaderFactory, const CreateParameters& params)
+nvrhi::ShaderHandle DepthPassImpl<InputPolicy>::CreateVertexShader(ShaderFactory& shaderFactory, const CreateParameters& params)
 {
     char const* sourceFileName = "donut/passes/depth_vs.hlsl";
 
@@ -147,19 +147,19 @@ nvrhi::ShaderHandle DepthPassT<InputPolicy>::CreateVertexShader(ShaderFactory& s
 }
 
 template<GeometryInputPolicy InputPolicy>
-nvrhi::ShaderHandle DepthPassT<InputPolicy>::CreatePixelShader(ShaderFactory& shaderFactory, const CreateParameters& params)
+nvrhi::ShaderHandle DepthPassImpl<InputPolicy>::CreatePixelShader(ShaderFactory& shaderFactory, const CreateParameters& params)
 {
     return shaderFactory.CreateAutoShader("donut/passes/depth_ps.hlsl", "main", DONUT_MAKE_PLATFORM_SHADER(g_depth_ps), nullptr, nvrhi::ShaderType::Pixel);
 }
 
 template<GeometryInputPolicy InputPolicy>
-nvrhi::InputLayoutHandle DepthPassT<InputPolicy>::CreateInputLayout(nvrhi::IShader* vertexShader, const CreateParameters& params)
+nvrhi::InputLayoutHandle DepthPassImpl<InputPolicy>::CreateInputLayout(nvrhi::IShader* vertexShader, const CreateParameters& params)
 {
     return CreateInputLayout(vertexShader, params, TexCoordFormat::Float32);
 }
 
 template<GeometryInputPolicy InputPolicy>
-nvrhi::InputLayoutHandle DepthPassT<InputPolicy>::CreateInputLayout(nvrhi::IShader* vertexShader, const CreateParameters& params, TexCoordFormat texCoordFormat)
+nvrhi::InputLayoutHandle DepthPassImpl<InputPolicy>::CreateInputLayout(nvrhi::IShader* vertexShader, const CreateParameters& params, TexCoordFormat texCoordFormat)
 {
     if (params.useInputAssembler)
     {
@@ -177,7 +177,7 @@ nvrhi::InputLayoutHandle DepthPassT<InputPolicy>::CreateInputLayout(nvrhi::IShad
 }
 
 template<GeometryInputPolicy InputPolicy>
-void DepthPassT<InputPolicy>::CreateViewBindings(nvrhi::BindingLayoutHandle& layout, nvrhi::BindingSetHandle& set, const CreateParameters& params)
+void DepthPassImpl<InputPolicy>::CreateViewBindings(nvrhi::BindingLayoutHandle& layout, nvrhi::BindingSetHandle& set, const CreateParameters& params)
 {
     auto bindingLayoutDesc = nvrhi::BindingLayoutDesc()
         .setVisibility(nvrhi::ShaderType::Vertex | nvrhi::ShaderType::Pixel)
@@ -197,7 +197,7 @@ void DepthPassT<InputPolicy>::CreateViewBindings(nvrhi::BindingLayoutHandle& lay
 }
 
 template<GeometryInputPolicy InputPolicy>
-std::shared_ptr<MaterialBindingCache> DepthPassT<InputPolicy>::CreateMaterialBindingCache(CommonRenderPasses& commonPasses)
+std::shared_ptr<MaterialBindingCache> DepthPassImpl<InputPolicy>::CreateMaterialBindingCache(CommonRenderPasses& commonPasses)
 {
     std::vector<MaterialResourceBinding> materialBindings = {
         { MaterialResource::DiffuseTexture, DEPTH_BINDING_MATERIAL_DIFFUSE_TEXTURE },
@@ -217,7 +217,7 @@ std::shared_ptr<MaterialBindingCache> DepthPassT<InputPolicy>::CreateMaterialBin
 }
 
 template<GeometryInputPolicy InputPolicy>
-nvrhi::GraphicsPipelineHandle DepthPassT<InputPolicy>::CreateGraphicsPipeline(PipelineKey key,
+nvrhi::GraphicsPipelineHandle DepthPassImpl<InputPolicy>::CreateGraphicsPipeline(PipelineKey key,
     nvrhi::FramebufferInfo const& framebufferInfo)
 {
     const auto texCoordFormat = static_cast<TexCoordFormat>(key.bits.texCoordFormat);
@@ -261,21 +261,21 @@ nvrhi::GraphicsPipelineHandle DepthPassT<InputPolicy>::CreateGraphicsPipeline(Pi
 }
 
 template<GeometryInputPolicy InputPolicy>
-nvrhi::BindingLayoutHandle DepthPassT<InputPolicy>::CreateInputBindingLayout()
+nvrhi::BindingLayoutHandle DepthPassImpl<InputPolicy>::CreateInputBindingLayout()
 {
     return GeometryPassInput<InputPolicy>::template CreateBindingLayout<DepthInputConfiguration>(
         m_Device, m_UseInputAssembler, m_IsDX11);
 }
 
 template<GeometryInputPolicy InputPolicy>
-nvrhi::BindingSetHandle DepthPassT<InputPolicy>::CreateInputBindingSet(const BufferGroup* bufferGroup)
+nvrhi::BindingSetHandle DepthPassImpl<InputPolicy>::CreateInputBindingSet(const BufferGroup* bufferGroup)
 {
     return GeometryPassInput<InputPolicy>::template CreateBindingSet<DepthInputConfiguration>(
         m_Device, m_InputBindingLayout, bufferGroup, m_UseInputAssembler, m_IsDX11);
 }
 
 template<GeometryInputPolicy InputPolicy>
-nvrhi::BindingSetHandle DepthPassT<InputPolicy>::GetOrCreateInputBindingSet(const BufferGroup* bufferGroup)
+nvrhi::BindingSetHandle DepthPassImpl<InputPolicy>::GetOrCreateInputBindingSet(const BufferGroup* bufferGroup)
 {
     return m_Input.GetBindingSet(bufferGroup, [&](const BufferGroup* buffers)
     {
@@ -288,7 +288,7 @@ nvrhi::BindingSetHandle DepthPassT<InputPolicy>::GetOrCreateInputBindingSet(cons
 }
 
 template<GeometryInputPolicy InputPolicy>
-void DepthPassT<InputPolicy>::SetPushConstants(
+void DepthPassImpl<InputPolicy>::SetPushConstants(
     donut::render::GeometryPassContext& abstractContext,
     nvrhi::ICommandList* commandList,
     nvrhi::GraphicsState& state,
@@ -299,13 +299,13 @@ void DepthPassT<InputPolicy>::SetPushConstants(
 }
 
 template<GeometryInputPolicy InputPolicy>
-ViewType::Enum DepthPassT<InputPolicy>::GetSupportedViewTypes() const
+ViewType::Enum DepthPassImpl<InputPolicy>::GetSupportedViewTypes() const
 {
     return ViewType::PLANAR;
 }
 
 template<GeometryInputPolicy InputPolicy>
-void DepthPassT<InputPolicy>::SetupView(GeometryPassContext& abstractContext, nvrhi::ICommandList* commandList, const engine::IView* view, const engine::IView* viewPrev)
+void DepthPassImpl<InputPolicy>::SetupView(GeometryPassContext& abstractContext, nvrhi::ICommandList* commandList, const engine::IView* view, const engine::IView* viewPrev)
 {
     auto& context = static_cast<Context&>(abstractContext);
     context.pushConstantsValid = false;
@@ -319,7 +319,7 @@ void DepthPassT<InputPolicy>::SetupView(GeometryPassContext& abstractContext, nv
 }
 
 template<GeometryInputPolicy InputPolicy>
-bool DepthPassT<InputPolicy>::SetupMaterial(GeometryPassContext& abstractContext, const engine::Material* material, nvrhi::RasterCullMode cullMode, nvrhi::GraphicsState& state)
+bool DepthPassImpl<InputPolicy>::SetupMaterial(GeometryPassContext& abstractContext, const engine::Material* material, nvrhi::RasterCullMode cullMode, nvrhi::GraphicsState& state)
 {
     auto& context = static_cast<Context&>(abstractContext);
 
@@ -377,7 +377,7 @@ bool DepthPassT<InputPolicy>::SetupMaterial(GeometryPassContext& abstractContext
 }
 
 template<GeometryInputPolicy InputPolicy>
-void DepthPassT<InputPolicy>::SetupInputBuffers(GeometryPassContext& abstractContext, const engine::BufferGroup* buffers, nvrhi::GraphicsState& state)
+void DepthPassImpl<InputPolicy>::SetupInputBuffers(GeometryPassContext& abstractContext, const engine::BufferGroup* buffers, nvrhi::GraphicsState& state)
 {
     auto& context = static_cast<Context&>(abstractContext);
 
@@ -403,5 +403,5 @@ void DepthPassT<InputPolicy>::SetupInputBuffers(GeometryPassContext& abstractCon
     }
 }
 
-template class donut::render::detail::DepthPassT<GeometryInputPolicy::Stock>;
-template class donut::render::detail::DepthPassT<GeometryInputPolicy::Custom>;
+template class donut::render::detail::DepthPassImpl<GeometryInputPolicy::Stock>;
+template class donut::render::detail::DepthPassImpl<GeometryInputPolicy::Custom>;

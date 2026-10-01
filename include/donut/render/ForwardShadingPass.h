@@ -102,7 +102,7 @@ namespace donut::render::detail
 {
     // Implementation shared by the public stock and custom aliases below.
     template<GeometryInputPolicy InputPolicy>
-    class ForwardShadingPassT : public IGeometryPass
+    class ForwardShadingPassImpl : public IGeometryPass
     {
     public:
 
@@ -184,7 +184,7 @@ namespace donut::render::detail
         nvrhi::BindingSetHandle GetOrCreateInputBindingSet(const engine::BufferGroup* bufferGroup);
 
     public:
-        ForwardShadingPassT(
+        ForwardShadingPassImpl(
             nvrhi::IDevice* device,
             std::shared_ptr<engine::CommonRenderPasses> commonPasses);
 
@@ -216,6 +216,6 @@ namespace donut::render::detail
 namespace donut::render
 {
     // Stock input hooks are final; derive from CustomForwardShadingPass to replace them.
-    using ForwardShadingPass = detail::StockGeometryPass<detail::ForwardShadingPassT<GeometryInputPolicy::Stock>>;
-    using CustomForwardShadingPass = detail::ForwardShadingPassT<GeometryInputPolicy::Custom>;
+    using ForwardShadingPass = detail::StockGeometryPass<detail::ForwardShadingPassImpl<GeometryInputPolicy::Stock>>;
+    using CustomForwardShadingPass = detail::ForwardShadingPassImpl<GeometryInputPolicy::Custom>;
 }

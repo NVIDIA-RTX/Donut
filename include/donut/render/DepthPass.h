@@ -44,7 +44,7 @@ namespace donut::render::detail
 {
     // Implementation shared by the public stock and custom aliases below.
     template<GeometryInputPolicy InputPolicy>
-    class DepthPassT : public IGeometryPass
+    class DepthPassImpl : public IGeometryPass
     {
     public:
         union PipelineKey
@@ -138,7 +138,7 @@ namespace donut::render::detail
 
 
     public:
-        DepthPassT(
+        DepthPassImpl(
             nvrhi::IDevice* device,
             std::shared_ptr<engine::CommonRenderPasses> commonPasses);
 
@@ -162,6 +162,6 @@ namespace donut::render::detail
 namespace donut::render
 {
     // Stock input hooks are final; derive from CustomDepthPass to replace them.
-    using DepthPass = detail::StockGeometryPass<detail::DepthPassT<GeometryInputPolicy::Stock>>;
-    using CustomDepthPass = detail::DepthPassT<GeometryInputPolicy::Custom>;
+    using DepthPass = detail::StockGeometryPass<detail::DepthPassImpl<GeometryInputPolicy::Stock>>;
+    using CustomDepthPass = detail::DepthPassImpl<GeometryInputPolicy::Custom>;
 }

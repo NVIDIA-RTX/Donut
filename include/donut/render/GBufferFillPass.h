@@ -43,7 +43,7 @@ namespace donut::render::detail
 {
     // Implementation shared by the public stock and custom aliases below.
     template<GeometryInputPolicy InputPolicy>
-    class GBufferFillPassT : public IGeometryPass
+    class GBufferFillPassImpl : public IGeometryPass
     {
     public:
         union PipelineKey
@@ -143,7 +143,7 @@ namespace donut::render::detail
         nvrhi::BindingSetHandle GetOrCreateInputBindingSet(const engine::BufferGroup* bufferGroup);
         
     public:
-        GBufferFillPassT(nvrhi::IDevice* device, std::shared_ptr<engine::CommonRenderPasses> commonPasses);
+        GBufferFillPassImpl(nvrhi::IDevice* device, std::shared_ptr<engine::CommonRenderPasses> commonPasses);
 
         virtual void Init(
             engine::ShaderFactory& shaderFactory,
@@ -165,8 +165,8 @@ namespace donut::render::detail
 namespace donut::render
 {
     // Stock input hooks are final; derive from CustomGBufferFillPass to replace them.
-    using GBufferFillPass = detail::StockGeometryPass<detail::GBufferFillPassT<GeometryInputPolicy::Stock>>;
-    using CustomGBufferFillPass = detail::GBufferFillPassT<GeometryInputPolicy::Custom>;
+    using GBufferFillPass = detail::StockGeometryPass<detail::GBufferFillPassImpl<GeometryInputPolicy::Stock>>;
+    using CustomGBufferFillPass = detail::GBufferFillPassImpl<GeometryInputPolicy::Custom>;
 
     class MaterialIDPass : public GBufferFillPass
     {

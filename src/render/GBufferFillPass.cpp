@@ -80,7 +80,7 @@ namespace
 }
 
 template<GeometryInputPolicy InputPolicy>
-GBufferFillPassT<InputPolicy>::GBufferFillPassT(nvrhi::IDevice* device, std::shared_ptr<CommonRenderPasses> commonPasses)
+GBufferFillPassImpl<InputPolicy>::GBufferFillPassImpl(nvrhi::IDevice* device, std::shared_ptr<CommonRenderPasses> commonPasses)
     : m_Device(device)
     , m_CommonPasses(std::move(commonPasses))
 {
@@ -88,7 +88,7 @@ GBufferFillPassT<InputPolicy>::GBufferFillPassT(nvrhi::IDevice* device, std::sha
 }
 
 template<GeometryInputPolicy InputPolicy>
-void GBufferFillPassT<InputPolicy>::Init(ShaderFactory& shaderFactory, const CreateParameters& params)
+void GBufferFillPassImpl<InputPolicy>::Init(ShaderFactory& shaderFactory, const CreateParameters& params)
 {
     m_EnableMotionVectors = params.enableMotionVectors;
     m_UseInputAssembler = params.useInputAssembler;
@@ -137,14 +137,14 @@ void GBufferFillPassT<InputPolicy>::Init(ShaderFactory& shaderFactory, const Cre
 }
 
 template<GeometryInputPolicy InputPolicy>
-void GBufferFillPassT<InputPolicy>::ResetBindingCache()
+void GBufferFillPassImpl<InputPolicy>::ResetBindingCache()
 {
     m_MaterialBindings->Clear();
     m_Input.ResetBindingCache();
 }
 
 template<GeometryInputPolicy InputPolicy>
-nvrhi::ShaderHandle GBufferFillPassT<InputPolicy>::CreateVertexShader(ShaderFactory& shaderFactory, const CreateParameters& params)
+nvrhi::ShaderHandle GBufferFillPassImpl<InputPolicy>::CreateVertexShader(ShaderFactory& shaderFactory, const CreateParameters& params)
 {
     char const* sourceFileName = "donut/passes/gbuffer_vs.hlsl";
 
@@ -165,7 +165,7 @@ nvrhi::ShaderHandle GBufferFillPassT<InputPolicy>::CreateVertexShader(ShaderFact
 }
 
 template<GeometryInputPolicy InputPolicy>
-nvrhi::ShaderHandle GBufferFillPassT<InputPolicy>::CreateGeometryShader(ShaderFactory& shaderFactory, const CreateParameters& params)
+nvrhi::ShaderHandle GBufferFillPassImpl<InputPolicy>::CreateGeometryShader(ShaderFactory& shaderFactory, const CreateParameters& params)
 {
 
     ShaderMacro MotionVectorsMacro("MOTION_VECTORS", params.enableMotionVectors ? "1" : "0");
@@ -194,7 +194,7 @@ nvrhi::ShaderHandle GBufferFillPassT<InputPolicy>::CreateGeometryShader(ShaderFa
 }
 
 template<GeometryInputPolicy InputPolicy>
-nvrhi::ShaderHandle GBufferFillPassT<InputPolicy>::CreatePixelShader(ShaderFactory& shaderFactory, const CreateParameters& params, bool alphaTested)
+nvrhi::ShaderHandle GBufferFillPassImpl<InputPolicy>::CreatePixelShader(ShaderFactory& shaderFactory, const CreateParameters& params, bool alphaTested)
 {
     std::vector<ShaderMacro> PixelShaderMacros;
     PixelShaderMacros.push_back(ShaderMacro("MOTION_VECTORS", params.enableMotionVectors ? "1" : "0"));
@@ -204,13 +204,13 @@ nvrhi::ShaderHandle GBufferFillPassT<InputPolicy>::CreatePixelShader(ShaderFacto
 }
 
 template<GeometryInputPolicy InputPolicy>
-nvrhi::InputLayoutHandle GBufferFillPassT<InputPolicy>::CreateInputLayout(nvrhi::IShader* vertexShader, const CreateParameters& params)
+nvrhi::InputLayoutHandle GBufferFillPassImpl<InputPolicy>::CreateInputLayout(nvrhi::IShader* vertexShader, const CreateParameters& params)
 {
     return CreateInputLayout(vertexShader, params, TexCoordFormat::Float32);
 }
 
 template<GeometryInputPolicy InputPolicy>
-nvrhi::InputLayoutHandle GBufferFillPassT<InputPolicy>::CreateInputLayout(nvrhi::IShader* vertexShader, const CreateParameters& params, TexCoordFormat texCoordFormat)
+nvrhi::InputLayoutHandle GBufferFillPassImpl<InputPolicy>::CreateInputLayout(nvrhi::IShader* vertexShader, const CreateParameters& params, TexCoordFormat texCoordFormat)
 {
     if (params.useInputAssembler)
     {
@@ -235,7 +235,7 @@ nvrhi::InputLayoutHandle GBufferFillPassT<InputPolicy>::CreateInputLayout(nvrhi:
 }
 
 template<GeometryInputPolicy InputPolicy>
-void GBufferFillPassT<InputPolicy>::CreateViewBindings(nvrhi::BindingLayoutHandle& layout, nvrhi::BindingSetHandle& set, const CreateParameters& params)
+void GBufferFillPassImpl<InputPolicy>::CreateViewBindings(nvrhi::BindingLayoutHandle& layout, nvrhi::BindingSetHandle& set, const CreateParameters& params)
 {
     auto bindingLayoutDesc = nvrhi::BindingLayoutDesc()
         .setVisibility(nvrhi::ShaderType::Vertex | nvrhi::ShaderType::Pixel)
@@ -255,7 +255,7 @@ void GBufferFillPassT<InputPolicy>::CreateViewBindings(nvrhi::BindingLayoutHandl
 }
 
 template<GeometryInputPolicy InputPolicy>
-nvrhi::GraphicsPipelineHandle GBufferFillPassT<InputPolicy>::CreateGraphicsPipeline(PipelineKey key, nvrhi::FramebufferInfo const& framebufferInfo)
+nvrhi::GraphicsPipelineHandle GBufferFillPassImpl<InputPolicy>::CreateGraphicsPipeline(PipelineKey key, nvrhi::FramebufferInfo const& framebufferInfo)
 {
     const auto texCoordFormat = static_cast<TexCoordFormat>(key.bits.texCoordFormat);
     const bool floatingInput = m_Input.UsesSpecializedInput() && texCoordFormat != TexCoordFormat::Unorm16;
@@ -322,7 +322,7 @@ nvrhi::GraphicsPipelineHandle GBufferFillPassT<InputPolicy>::CreateGraphicsPipel
 }
 
 template<GeometryInputPolicy InputPolicy>
-std::shared_ptr<MaterialBindingCache> GBufferFillPassT<InputPolicy>::CreateMaterialBindingCache(CommonRenderPasses& commonPasses)
+std::shared_ptr<MaterialBindingCache> GBufferFillPassImpl<InputPolicy>::CreateMaterialBindingCache(CommonRenderPasses& commonPasses)
 {
     std::vector<MaterialResourceBinding> materialBindings = {
         { MaterialResource::ConstantBuffer,         GBUFFER_BINDING_MATERIAL_CONSTANTS },
@@ -347,13 +347,13 @@ std::shared_ptr<MaterialBindingCache> GBufferFillPassT<InputPolicy>::CreateMater
 }
 
 template<GeometryInputPolicy InputPolicy>
-ViewType::Enum GBufferFillPassT<InputPolicy>::GetSupportedViewTypes() const
+ViewType::Enum GBufferFillPassImpl<InputPolicy>::GetSupportedViewTypes() const
 {
     return m_SupportedViewTypes;
 }
 
 template<GeometryInputPolicy InputPolicy>
-void GBufferFillPassT<InputPolicy>::SetupView(GeometryPassContext& abstractContext, nvrhi::ICommandList* commandList, const engine::IView* view, const engine::IView* viewPrev)
+void GBufferFillPassImpl<InputPolicy>::SetupView(GeometryPassContext& abstractContext, nvrhi::ICommandList* commandList, const engine::IView* view, const engine::IView* viewPrev)
 {
     auto& context = static_cast<Context&>(abstractContext);
     context.pushConstantsValid = false;
@@ -368,7 +368,7 @@ void GBufferFillPassT<InputPolicy>::SetupView(GeometryPassContext& abstractConte
 }
 
 template<GeometryInputPolicy InputPolicy>
-bool GBufferFillPassT<InputPolicy>::SetupMaterial(GeometryPassContext& abstractContext, const engine::Material* material, nvrhi::RasterCullMode cullMode, nvrhi::GraphicsState& state)
+bool GBufferFillPassImpl<InputPolicy>::SetupMaterial(GeometryPassContext& abstractContext, const engine::Material* material, nvrhi::RasterCullMode cullMode, nvrhi::GraphicsState& state)
 {
     auto& context = static_cast<Context&>(abstractContext);
     
@@ -421,7 +421,7 @@ bool GBufferFillPassT<InputPolicy>::SetupMaterial(GeometryPassContext& abstractC
 }
 
 template<GeometryInputPolicy InputPolicy>
-void GBufferFillPassT<InputPolicy>::SetupInputBuffers(GeometryPassContext& abstractContext, const engine::BufferGroup* buffers, nvrhi::GraphicsState& state)
+void GBufferFillPassImpl<InputPolicy>::SetupInputBuffers(GeometryPassContext& abstractContext, const engine::BufferGroup* buffers, nvrhi::GraphicsState& state)
 {
     auto& context = static_cast<Context&>(abstractContext);
 
@@ -454,21 +454,21 @@ void GBufferFillPassT<InputPolicy>::SetupInputBuffers(GeometryPassContext& abstr
 }
 
 template<GeometryInputPolicy InputPolicy>
-nvrhi::BindingLayoutHandle GBufferFillPassT<InputPolicy>::CreateInputBindingLayout()
+nvrhi::BindingLayoutHandle GBufferFillPassImpl<InputPolicy>::CreateInputBindingLayout()
 {
     return GeometryPassInput<InputPolicy>::template CreateBindingLayout<GBufferInputConfiguration>(
         m_Device, m_UseInputAssembler, m_IsDX11);
 }
 
 template<GeometryInputPolicy InputPolicy>
-nvrhi::BindingSetHandle GBufferFillPassT<InputPolicy>::CreateInputBindingSet(const BufferGroup* bufferGroup)
+nvrhi::BindingSetHandle GBufferFillPassImpl<InputPolicy>::CreateInputBindingSet(const BufferGroup* bufferGroup)
 {
     return GeometryPassInput<InputPolicy>::template CreateBindingSet<GBufferInputConfiguration>(
         m_Device, m_InputBindingLayout, bufferGroup, m_UseInputAssembler, m_IsDX11);
 }
 
 template<GeometryInputPolicy InputPolicy>
-nvrhi::BindingSetHandle GBufferFillPassT<InputPolicy>::GetOrCreateInputBindingSet(const BufferGroup* bufferGroup)
+nvrhi::BindingSetHandle GBufferFillPassImpl<InputPolicy>::GetOrCreateInputBindingSet(const BufferGroup* bufferGroup)
 {
     return m_Input.GetBindingSet(bufferGroup, [&](const BufferGroup* buffers)
     {
@@ -481,7 +481,7 @@ nvrhi::BindingSetHandle GBufferFillPassT<InputPolicy>::GetOrCreateInputBindingSe
 }
 
 template<GeometryInputPolicy InputPolicy>
-void GBufferFillPassT<InputPolicy>::SetPushConstants(
+void GBufferFillPassImpl<InputPolicy>::SetPushConstants(
     donut::render::GeometryPassContext& abstractContext,
     nvrhi::ICommandList* commandList,
     nvrhi::GraphicsState& state,
@@ -513,5 +513,5 @@ nvrhi::ShaderHandle MaterialIDPass::CreatePixelShader(engine::ShaderFactory& sha
         DONUT_MAKE_PLATFORM_SHADER(g_material_id_ps), &PixelShaderMacros, nvrhi::ShaderType::Pixel);
 }
 
-template class donut::render::detail::GBufferFillPassT<GeometryInputPolicy::Stock>;
-template class donut::render::detail::GBufferFillPassT<GeometryInputPolicy::Custom>;
+template class donut::render::detail::GBufferFillPassImpl<GeometryInputPolicy::Stock>;
+template class donut::render::detail::GBufferFillPassImpl<GeometryInputPolicy::Custom>;

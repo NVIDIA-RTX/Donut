@@ -48,7 +48,7 @@ namespace
     }
 
     template<typename Base>
-    class TestDepthPassT : public Base
+    class TestDepthPassImpl : public Base
     {
     public:
         using Base::Base;
@@ -62,10 +62,10 @@ namespace
         }
     };
 
-    class TestDepthLayoutPass : public TestDepthPassT<CustomDepthPass>
+    class TestDepthLayoutPass : public TestDepthPassImpl<CustomDepthPass>
     {
     public:
-        using TestDepthPassT<CustomDepthPass>::TestDepthPassT;
+        using TestDepthPassImpl<CustomDepthPass>::TestDepthPassImpl;
         uint32_t float16LayoutCount = 0;
         uint32_t unorm16LayoutCount = 0;
 
@@ -131,7 +131,7 @@ namespace
     };
 
     template<typename Base>
-    class TestForwardPassT : public Base
+    class TestForwardPassImpl : public Base
     {
     public:
         using Base::Base;
@@ -146,7 +146,7 @@ namespace
     };
 
     template<typename Base>
-    class TestGBufferPassT : public Base
+    class TestGBufferPassImpl : public Base
     {
     public:
         using Base::Base;
@@ -618,7 +618,7 @@ static bool RunGpu(const std::filesystem::path& shaderPath, const std::filesyste
     bool passed = true;
     for (bool inputAssembler : { false, true })
     {
-        TestDepthPassT<DepthPass> depthPass(device, common);
+        TestDepthPassImpl<DepthPass> depthPass(device, common);
         DepthPass::CreateParameters depthParams;
         depthParams.useInputAssembler = inputAssembler;
         // These adapters only replace the pixel shader; retain the stock input policy.
@@ -627,7 +627,7 @@ static bool RunGpu(const std::filesystem::path& shaderPath, const std::filesyste
         passed &= fixture.ExercisePass(device, depthPass, depthContext,
             inputAssembler ? "Depth IA mixed UV formats" : "Depth raw mixed UV formats", inputAssembler);
 
-        TestForwardPassT<ForwardShadingPass> forwardPass(device, common);
+        TestForwardPassImpl<ForwardShadingPass> forwardPass(device, common);
         ForwardShadingPass::CreateParameters forwardParams;
         forwardParams.useInputAssembler = inputAssembler;
         forwardPass.Init(*factory, forwardParams);
@@ -637,7 +637,7 @@ static bool RunGpu(const std::filesystem::path& shaderPath, const std::filesyste
 
         for (bool motionVectors : { false, true })
         {
-            TestGBufferPassT<GBufferFillPass> gbufferPass(device, common);
+            TestGBufferPassImpl<GBufferFillPass> gbufferPass(device, common);
             GBufferFillPass::CreateParameters gbufferParams;
             gbufferParams.useInputAssembler = inputAssembler;
             gbufferParams.enableMotionVectors = motionVectors;
@@ -663,7 +663,7 @@ static bool RunGpu(const std::filesystem::path& shaderPath, const std::filesyste
             passed &= genericDepthPass.float16LayoutCount == (inputAssembler ? 1u : 0u);
             passed &= genericDepthPass.unorm16LayoutCount == (inputAssembler ? 1u : 0u);
 
-            TestForwardPassT<TestInputFactories<CustomForwardShadingPass>> genericForwardPass(device, common);
+            TestForwardPassImpl<TestInputFactories<CustomForwardShadingPass>> genericForwardPass(device, common);
             CustomForwardShadingPass::CreateParameters genericForwardParams;
             genericForwardParams.useInputAssembler = inputAssembler;
             genericForwardPass.Init(*factory, genericForwardParams);
@@ -673,7 +673,7 @@ static bool RunGpu(const std::filesystem::path& shaderPath, const std::filesyste
 
             for (bool motionVectors : { false, true })
             {
-                TestGBufferPassT<TestInputFactories<CustomGBufferFillPass>> genericGBufferPass(device, common);
+                TestGBufferPassImpl<TestInputFactories<CustomGBufferFillPass>> genericGBufferPass(device, common);
                 CustomGBufferFillPass::CreateParameters gbufferParams;
                 gbufferParams.useInputAssembler = inputAssembler;
                 gbufferParams.enableMotionVectors = motionVectors;
