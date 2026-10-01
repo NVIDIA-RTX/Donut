@@ -11,7 +11,7 @@ Donut has originated from the VRWorks Multi-Projection SDK and has been improved
 * Windows or Linux (x64 or ARM64)
 * CMake 3.31
 * A C++ 17 compiler (Visual Studio 2022, GCC 11 or Clang 14)
-* A shader compiler (FXC for DX11, DXC for DX12, DXC-SPIR-V for Vulkan - the newer the better)
+* DXC with HLSL 2021 support for DX12, or DXC-SPIR-V for Vulkan
 
 ## Dependencies
 
@@ -53,7 +53,8 @@ Most interaction with graphics APIs is done through the NVRHI abstraction layer.
 
 * Vulkan 1.2, requires Vulkan headers version 1.2.162 or later; included as a submodule of NVRHI (`DONUT_WITH_VULKAN`)
 * Direct3D 12, requires Windows SDK version 19041 or later (`DONUT_WITH_DX12`)
-* Direct3D 11, requires some compatible version of Windows SDK (`DONUT_WITH_DX11`)
+
+`DONUT_WITH_DX11` defaults to `OFF`. The stock shaders use HLSL 2021 templates, which FXC cannot compile; renderer builds reject DX11 at configuration time. Existing build configurations must disable it and use DX12 or Vulkan.
 
 Note that NVRHI does not provide any means to create the GAPI devices or windows, that functionality is handled by the `DeviceManager` class and its descendants in `donut_app`.
 

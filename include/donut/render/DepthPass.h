@@ -24,10 +24,10 @@
 
 #include <donut/engine/SceneTypes.h>
 #include <donut/render/GeometryPasses.h>
+#include <donut/render/GeometryPassInput.h>
 #include <array>
 #include <memory>
 #include <mutex>
-#include <optional>
 #include <nvrhi/nvrhi.h>
 
 namespace donut::engine
@@ -40,9 +40,11 @@ namespace donut::engine
     class IView;
 }
 
-namespace donut::render
+namespace donut::render::detail
 {
-    class DepthPass : public IGeometryPass
+    // Implementation shared by the public stock and custom aliases below.
+    template<GeometryInputPolicy InputPolicy>
+    class DepthPassT : public IGeometryPass
     {
     public:
         union PipelineKey
@@ -94,10 +96,6 @@ namespace donut::render
             // Using Buffer SRVs is often faster.
             bool useInputAssembler = false;
 
-            // Unset specializes only the stock pass. Derived passes may opt in if they use
-            // stock vertex/input bindings and no custom shader or draw code needs input push constants.
-            std::optional<bool> specializeInputAssemblerTexCoords;
-
             uint32_t numConstantBufferVersions = 16;
         };
 
@@ -107,11 +105,7 @@ namespace donut::render
         std::array<nvrhi::InputLayoutHandle, size_t(engine::TexCoordFormat::Count)> m_InputLayouts;
         CreateParameters m_CreateParameters;
         nvrhi::ShaderHandle m_VertexShader;
-        nvrhi::ShaderHandle m_VertexShaderFloat;
-        nvrhi::BindingLayoutHandle m_InputBindingLayoutFloat;
-        nvrhi::BindingSetHandle m_InputBindingSetFloat;
-        nvrhi::BindingSetHandle m_InputBindingSetUnorm;
-        bool m_SpecializeInputAssemblerTexCoords = false;
+        GeometryPassInput<InputPolicy> m_Input;
         nvrhi::ShaderHandle m_PixelShader;
         nvrhi::BindingLayoutHandle m_InputBindingLayout;
         nvrhi::BindingLayoutHandle m_ViewBindingLayout;
@@ -127,8 +121,6 @@ namespace donut::render
         bool m_UseInputAssembler = false;
         bool m_TrackLiveness = true;
 
-        std::unordered_map<const engine::BufferGroup*, nvrhi::BindingSetHandle> m_InputBindingSets;
-        
         std::shared_ptr<engine::CommonRenderPasses> m_CommonPasses;
         std::shared_ptr<engine::MaterialBindingCache> m_MaterialBindings;
 
@@ -146,7 +138,7 @@ namespace donut::render
 
 
     public:
-        DepthPass(
+        DepthPassT(
             nvrhi::IDevice* device,
             std::shared_ptr<engine::CommonRenderPasses> commonPasses);
 
@@ -165,4 +157,11 @@ namespace donut::render
         void SetPushConstants(GeometryPassContext& context, nvrhi::ICommandList* commandList, nvrhi::GraphicsState& state, nvrhi::DrawArguments& args) override;
     };
 
+}
+
+namespace donut::render
+{
+    // Stock input hooks are final; derive from CustomDepthPass to replace them.
+    using DepthPass = detail::StockGeometryPass<detail::DepthPassT<GeometryInputPolicy::Stock>>;
+    using CustomDepthPass = detail::DepthPassT<GeometryInputPolicy::Custom>;
 }

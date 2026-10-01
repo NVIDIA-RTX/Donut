@@ -31,8 +31,6 @@
 #include <donut/core/log.h>
 #include <nvrhi/utils.h>
 #include <utility>
-#include <cstring>
-#include <typeinfo>
 
 #if DONUT_WITH_STATIC_SHADERS
 #if DONUT_WITH_DX11
@@ -61,8 +59,25 @@ using namespace donut::math;
 
 using namespace donut::engine;
 using namespace donut::render;
+using namespace donut::render::detail;
 
-ForwardShadingPass::ForwardShadingPass(
+namespace
+{
+    struct ForwardInputConfiguration
+    {
+        using PushConstants = ForwardPushConstants;
+        static constexpr uint32_t InputSpace = FORWARD_SPACE_INPUT;
+        static constexpr uint32_t PushConstantBinding = FORWARD_BINDING_PUSH_CONSTANTS;
+        static constexpr uint32_t InstanceBinding = FORWARD_BINDING_INSTANCE_BUFFER;
+        static constexpr uint32_t VertexBinding = FORWARD_BINDING_VERTEX_BUFFER;
+        static constexpr nvrhi::ShaderType Visibility = nvrhi::ShaderType::Vertex;
+        static constexpr bool HasNormals = true;
+        static constexpr bool HasPrevPosition = false;
+    };
+}
+
+template<GeometryInputPolicy InputPolicy>
+ForwardShadingPassT<InputPolicy>::ForwardShadingPassT(
     nvrhi::IDevice* device,
     std::shared_ptr<CommonRenderPasses> commonPasses)
     : m_Device(device)
@@ -71,7 +86,8 @@ ForwardShadingPass::ForwardShadingPass(
     m_IsDX11 = m_Device->getGraphicsAPI() == nvrhi::GraphicsAPI::D3D11;
 }
 
-void ForwardShadingPass::Init(ShaderFactory& shaderFactory, const CreateParameters& params)
+template<GeometryInputPolicy InputPolicy>
+void ForwardShadingPassT<InputPolicy>::Init(ShaderFactory& shaderFactory, const CreateParameters& params)
 {
     m_UseInputAssembler = params.useInputAssembler;
 
@@ -79,25 +95,17 @@ void ForwardShadingPass::Init(ShaderFactory& shaderFactory, const CreateParamete
     if (params.singlePassCubemap)
         m_SupportedViewTypes = ViewType::CUBEMAP;
     
-    m_SpecializeInputAssemblerTexCoords = m_UseInputAssembler
-        && params.specializeInputAssemblerTexCoords.value_or(typeid(*this) == typeid(ForwardShadingPass));
-    m_VertexShaderFloat = nullptr;
-    m_InputBindingLayoutFloat = nullptr;
-    m_InputBindingSetFloat = nullptr;
-    m_InputBindingSetUnorm = nullptr;
-    if (m_SpecializeInputAssemblerTexCoords)
+    m_Input.template Init<ForwardInputConfiguration>(m_UseInputAssembler, [&]()
     {
         std::vector<ShaderMacro> macros = { { "DECODE_TEXCOORD", "0" } };
-        m_VertexShaderFloat = shaderFactory.CreateAutoShader("donut/passes/forward_vs.hlsl", "input_assembler",
+        return shaderFactory.CreateAutoShader("donut/passes/forward_vs.hlsl", "input_assembler",
             DONUT_MAKE_PLATFORM_SHADER(g_forward_vs_input_assembler), &macros, nvrhi::ShaderType::Vertex);
-        if (!m_VertexShaderFloat)
-            m_SpecializeInputAssemblerTexCoords = false;
-    }
+    });
 
     m_VertexShader = CreateVertexShader(shaderFactory, params);
     m_InputLayouts = {};
     m_InputLayouts[size_t(TexCoordFormat::Float32)] = CreateInputLayout(
-        m_SpecializeInputAssemblerTexCoords ? m_VertexShaderFloat : m_VertexShader, params);
+        m_Input.UsesSpecializedInput() ? m_Input.floatVertexShader : m_VertexShader, params);
     m_CreateParameters = params;
     m_GeometryShader = CreateGeometryShader(shaderFactory, params);
     m_PixelShader = CreatePixelShader(shaderFactory, params, false);
@@ -119,26 +127,24 @@ void ForwardShadingPass::Init(ShaderFactory& shaderFactory, const CreateParamete
     m_ViewBindingLayout = CreateViewBindingLayout();
     m_ViewBindingSet = CreateViewBindingSet();
     m_ShadingBindingLayout = CreateShadingBindingLayout();
-    m_InputBindingLayout = CreateInputBindingLayout();
-    if (m_SpecializeInputAssemblerTexCoords)
-    {
-        m_InputBindingLayoutFloat = m_Device->createBindingLayout(nvrhi::BindingLayoutDesc()
-            .setVisibility(nvrhi::ShaderType::Vertex)
-            .setRegisterSpaceAndDescriptorSet(FORWARD_SPACE_INPUT));
-        m_InputBindingSetFloat = m_Device->createBindingSet(nvrhi::BindingSetDesc(), m_InputBindingLayoutFloat);
-        // The stock IA binding set contains only push constants, so it needs no BufferGroup.
-        m_InputBindingSetUnorm = CreateInputBindingSet(nullptr);
-    }
+    if constexpr (InputPolicy == GeometryInputPolicy::Stock)
+        m_InputBindingLayout = GeometryPassInput<InputPolicy>::template CreateBindingLayout<ForwardInputConfiguration>(
+            m_Device, m_UseInputAssembler, m_IsDX11);
+    else
+        m_InputBindingLayout = CreateInputBindingLayout();
+    m_Input.template InitBindingSet<ForwardInputConfiguration>(m_Device, m_InputBindingLayout);
 }
 
-void ForwardShadingPass::ResetBindingCache()
+template<GeometryInputPolicy InputPolicy>
+void ForwardShadingPassT<InputPolicy>::ResetBindingCache()
 {
     m_MaterialBindings->Clear();
     m_ShadingBindingSets.clear();
-    m_InputBindingSets.clear();
+    m_Input.ResetBindingCache();
 }
 
-nvrhi::ShaderHandle ForwardShadingPass::CreateVertexShader(ShaderFactory& shaderFactory, const CreateParameters& params)
+template<GeometryInputPolicy InputPolicy>
+nvrhi::ShaderHandle ForwardShadingPassT<InputPolicy>::CreateVertexShader(ShaderFactory& shaderFactory, const CreateParameters& params)
 {
     char const* sourceFileName = "donut/passes/forward_vs.hlsl";
 
@@ -155,7 +161,8 @@ nvrhi::ShaderHandle ForwardShadingPass::CreateVertexShader(ShaderFactory& shader
     }
 }
 
-nvrhi::ShaderHandle ForwardShadingPass::CreateGeometryShader(ShaderFactory& shaderFactory, const CreateParameters& params)
+template<GeometryInputPolicy InputPolicy>
+nvrhi::ShaderHandle ForwardShadingPassT<InputPolicy>::CreateGeometryShader(ShaderFactory& shaderFactory, const CreateParameters& params)
 {
     if (params.singlePassCubemap)
     {
@@ -173,7 +180,8 @@ nvrhi::ShaderHandle ForwardShadingPass::CreateGeometryShader(ShaderFactory& shad
     return nullptr;
 }
 
-nvrhi::ShaderHandle ForwardShadingPass::CreatePixelShader(ShaderFactory& shaderFactory, const CreateParameters& params, bool transmissiveMaterial)
+template<GeometryInputPolicy InputPolicy>
+nvrhi::ShaderHandle ForwardShadingPassT<InputPolicy>::CreatePixelShader(ShaderFactory& shaderFactory, const CreateParameters& params, bool transmissiveMaterial)
 {
     std::vector<ShaderMacro> Macros;
     Macros.push_back(ShaderMacro("TRANSMISSIVE_MATERIAL", transmissiveMaterial ? "1" : "0"));
@@ -181,12 +189,14 @@ nvrhi::ShaderHandle ForwardShadingPass::CreatePixelShader(ShaderFactory& shaderF
     return shaderFactory.CreateAutoShader("donut/passes/forward_ps.hlsl", "main", DONUT_MAKE_PLATFORM_SHADER(g_forward_ps), &Macros, nvrhi::ShaderType::Pixel);
 }
 
-nvrhi::InputLayoutHandle ForwardShadingPass::CreateInputLayout(nvrhi::IShader* vertexShader, const CreateParameters& params)
+template<GeometryInputPolicy InputPolicy>
+nvrhi::InputLayoutHandle ForwardShadingPassT<InputPolicy>::CreateInputLayout(nvrhi::IShader* vertexShader, const CreateParameters& params)
 {
     return CreateInputLayout(vertexShader, params, TexCoordFormat::Float32);
 }
 
-nvrhi::InputLayoutHandle ForwardShadingPass::CreateInputLayout(nvrhi::IShader* vertexShader, const CreateParameters& params, TexCoordFormat texCoordFormat)
+template<GeometryInputPolicy InputPolicy>
+nvrhi::InputLayoutHandle ForwardShadingPassT<InputPolicy>::CreateInputLayout(nvrhi::IShader* vertexShader, const CreateParameters& params, TexCoordFormat texCoordFormat)
 {
     if (params.useInputAssembler)
     {
@@ -206,7 +216,8 @@ nvrhi::InputLayoutHandle ForwardShadingPass::CreateInputLayout(nvrhi::IShader* v
     return nullptr;
 }
 
-nvrhi::BindingLayoutHandle ForwardShadingPass::CreateViewBindingLayout()
+template<GeometryInputPolicy InputPolicy>
+nvrhi::BindingLayoutHandle ForwardShadingPassT<InputPolicy>::CreateViewBindingLayout()
 {
     auto bindingLayoutDesc = nvrhi::BindingLayoutDesc()
         .setVisibility(nvrhi::ShaderType::Vertex | nvrhi::ShaderType::Pixel)
@@ -217,7 +228,8 @@ nvrhi::BindingLayoutHandle ForwardShadingPass::CreateViewBindingLayout()
 }
 
 
-nvrhi::BindingSetHandle ForwardShadingPass::CreateViewBindingSet()
+template<GeometryInputPolicy InputPolicy>
+nvrhi::BindingSetHandle ForwardShadingPassT<InputPolicy>::CreateViewBindingSet()
 {
     auto bindingSetDesc = nvrhi::BindingSetDesc()
         .setTrackLiveness(m_TrackLiveness)
@@ -226,7 +238,8 @@ nvrhi::BindingSetHandle ForwardShadingPass::CreateViewBindingSet()
     return m_Device->createBindingSet(bindingSetDesc, m_ViewBindingLayout);
 }
 
-nvrhi::BindingLayoutHandle ForwardShadingPass::CreateShadingBindingLayout()
+template<GeometryInputPolicy InputPolicy>
+nvrhi::BindingLayoutHandle ForwardShadingPassT<InputPolicy>::CreateShadingBindingLayout()
 {
     auto bindingLayoutDesc = nvrhi::BindingLayoutDesc()
         .setVisibility(nvrhi::ShaderType::Pixel)
@@ -244,7 +257,8 @@ nvrhi::BindingLayoutHandle ForwardShadingPass::CreateShadingBindingLayout()
     return m_Device->createBindingLayout(bindingLayoutDesc);
 }
 
-nvrhi::BindingSetHandle ForwardShadingPass::CreateShadingBindingSet(nvrhi::ITexture* shadowMapTexture,
+template<GeometryInputPolicy InputPolicy>
+nvrhi::BindingSetHandle ForwardShadingPassT<InputPolicy>::CreateShadingBindingSet(nvrhi::ITexture* shadowMapTexture,
     nvrhi::ITexture* diffuse, nvrhi::ITexture* specular, nvrhi::ITexture* environmentBrdf)
 {
     auto bindingSetDesc = nvrhi::BindingSetDesc()
@@ -271,11 +285,12 @@ nvrhi::BindingSetHandle ForwardShadingPass::CreateShadingBindingSet(nvrhi::IText
 }
 
 
-nvrhi::GraphicsPipelineHandle ForwardShadingPass::CreateGraphicsPipeline(ForwardShadingPassPipelineKey const& key,
+template<GeometryInputPolicy InputPolicy>
+nvrhi::GraphicsPipelineHandle ForwardShadingPassT<InputPolicy>::CreateGraphicsPipeline(ForwardShadingPassPipelineKey const& key,
     nvrhi::FramebufferInfo const& framebufferInfo)
 {
-    const bool floatingInput = m_SpecializeInputAssemblerTexCoords && key.texCoordFormat != TexCoordFormat::Unorm16;
-    const auto& vertexShader = floatingInput ? m_VertexShaderFloat : m_VertexShader;
+    const bool floatingInput = m_Input.UsesSpecializedInput() && key.texCoordFormat != TexCoordFormat::Unorm16;
+    const auto& vertexShader = floatingInput ? m_Input.floatVertexShader : m_VertexShader;
     if (size_t(key.texCoordFormat) >= m_InputLayouts.size())
         return nullptr;
     auto& inputLayout = m_InputLayouts[size_t(key.texCoordFormat)];
@@ -296,7 +311,7 @@ nvrhi::GraphicsPipelineHandle ForwardShadingPass::CreateGraphicsPipeline(Forward
     pipelineDesc.renderState.blendState.alphaToCoverageEnable = false;
     pipelineDesc.shadingRateState = key.shadingRateState;
     pipelineDesc.bindingLayouts = { m_MaterialBindings->GetLayout(), m_ViewBindingLayout, m_ShadingBindingLayout };
-    pipelineDesc.bindingLayouts.push_back(floatingInput ? m_InputBindingLayoutFloat : m_InputBindingLayout);
+    pipelineDesc.bindingLayouts.push_back(floatingInput ? m_Input.floatBindingLayout : m_InputBindingLayout);
 
     bool const framebufferUsesMSAA = framebufferInfo.sampleCount > 1;
 
@@ -350,7 +365,8 @@ nvrhi::GraphicsPipelineHandle ForwardShadingPass::CreateGraphicsPipeline(Forward
     return m_Device->createGraphicsPipeline(pipelineDesc, framebufferInfo);
 }
 
-std::shared_ptr<MaterialBindingCache> ForwardShadingPass::CreateMaterialBindingCache(CommonRenderPasses& commonPasses)
+template<GeometryInputPolicy InputPolicy>
+std::shared_ptr<MaterialBindingCache> ForwardShadingPassT<InputPolicy>::CreateMaterialBindingCache(CommonRenderPasses& commonPasses)
 {
     std::vector<MaterialResourceBinding> materialBindings = {
         { MaterialResource::ConstantBuffer,         FORWARD_BINDING_MATERIAL_CONSTANTS },
@@ -374,7 +390,8 @@ std::shared_ptr<MaterialBindingCache> ForwardShadingPass::CreateMaterialBindingC
         commonPasses.m_BlackTexture);
 }
 
-void ForwardShadingPass::SetupView(
+template<GeometryInputPolicy InputPolicy>
+void ForwardShadingPassT<InputPolicy>::SetupView(
     GeometryPassContext& abstractContext,
     nvrhi::ICommandList* commandList,
     const IView* view,
@@ -392,7 +409,8 @@ void ForwardShadingPass::SetupView(
     context.keyTemplate.shadingRateState = view->GetVariableRateShadingState();
 }
 
-void ForwardShadingPass::PrepareLights(
+template<GeometryInputPolicy InputPolicy>
+void ForwardShadingPassT<InputPolicy>::PrepareLights(
     Context& context,
     nvrhi::ICommandList* commandList,
     const std::vector<std::shared_ptr<Light>>& lights,
@@ -511,12 +529,14 @@ void ForwardShadingPass::PrepareLights(
     commandList->writeBuffer(m_ForwardLightCB, &constants, sizeof(constants));
 }
 
-ViewType::Enum ForwardShadingPass::GetSupportedViewTypes() const
+template<GeometryInputPolicy InputPolicy>
+ViewType::Enum ForwardShadingPassT<InputPolicy>::GetSupportedViewTypes() const
 {
     return m_SupportedViewTypes;
 }
 
-bool ForwardShadingPass::SetupMaterial(GeometryPassContext& abstractContext, const Material* material,
+template<GeometryInputPolicy InputPolicy>
+bool ForwardShadingPassT<InputPolicy>::SetupMaterial(GeometryPassContext& abstractContext, const Material* material,
     nvrhi::RasterCullMode cullMode, nvrhi::GraphicsState& state)
 {
     auto& context = static_cast<Context&>(abstractContext);
@@ -559,7 +579,8 @@ bool ForwardShadingPass::SetupMaterial(GeometryPassContext& abstractContext, con
     return true;
 }
 
-void ForwardShadingPass::SetupInputBuffers(GeometryPassContext& abstractContext, const BufferGroup* buffers, nvrhi::GraphicsState& state)
+template<GeometryInputPolicy InputPolicy>
+void ForwardShadingPassT<InputPolicy>::SetupInputBuffers(GeometryPassContext& abstractContext, const BufferGroup* buffers, nvrhi::GraphicsState& state)
 {
     auto& context = static_cast<Context&>(abstractContext);
 
@@ -590,118 +611,43 @@ void ForwardShadingPass::SetupInputBuffers(GeometryPassContext& abstractContext,
     }
 }
 
-nvrhi::BindingLayoutHandle ForwardShadingPass::CreateInputBindingLayout()
+template<GeometryInputPolicy InputPolicy>
+nvrhi::BindingLayoutHandle ForwardShadingPassT<InputPolicy>::CreateInputBindingLayout()
 {
-    auto bindingLayoutDesc = nvrhi::BindingLayoutDesc()
-        .setVisibility(nvrhi::ShaderType::Vertex)
-        .setRegisterSpaceAndDescriptorSet(FORWARD_SPACE_INPUT)
-        .addItem(nvrhi::BindingLayoutItem::PushConstants(FORWARD_BINDING_PUSH_CONSTANTS, sizeof(ForwardPushConstants)));
-
-    if (!m_UseInputAssembler)
-    {
-        bindingLayoutDesc
-            .addItem(m_IsDX11
-                ? nvrhi::BindingLayoutItem::RawBuffer_SRV(FORWARD_BINDING_INSTANCE_BUFFER)
-                : nvrhi::BindingLayoutItem::StructuredBuffer_SRV(FORWARD_BINDING_INSTANCE_BUFFER))
-            .addItem(nvrhi::BindingLayoutItem::RawBuffer_SRV(FORWARD_BINDING_VERTEX_BUFFER));
-    }
-
-    return m_Device->createBindingLayout(bindingLayoutDesc);
+    return GeometryPassInput<InputPolicy>::template CreateBindingLayout<ForwardInputConfiguration>(
+        m_Device, m_UseInputAssembler, m_IsDX11);
 }
 
-nvrhi::BindingSetHandle ForwardShadingPass::CreateInputBindingSet(const BufferGroup* bufferGroup)
+template<GeometryInputPolicy InputPolicy>
+nvrhi::BindingSetHandle ForwardShadingPassT<InputPolicy>::CreateInputBindingSet(const BufferGroup* bufferGroup)
 {
-    auto bindingSetDesc = nvrhi::BindingSetDesc()
-        .addItem(nvrhi::BindingSetItem::PushConstants(FORWARD_BINDING_PUSH_CONSTANTS, sizeof(ForwardPushConstants)));
-
-    if (!m_UseInputAssembler)
-    {
-        bindingSetDesc
-            .addItem(m_IsDX11
-                ? nvrhi::BindingSetItem::RawBuffer_SRV(FORWARD_BINDING_INSTANCE_BUFFER, bufferGroup->instanceBuffer)
-                : nvrhi::BindingSetItem::StructuredBuffer_SRV(FORWARD_BINDING_INSTANCE_BUFFER, bufferGroup->instanceBuffer))
-            .addItem(nvrhi::BindingSetItem::RawBuffer_SRV(FORWARD_BINDING_VERTEX_BUFFER, bufferGroup->vertexBuffer));
-    }
-
-    return m_Device->createBindingSet(bindingSetDesc, m_InputBindingLayout);
+    return GeometryPassInput<InputPolicy>::template CreateBindingSet<ForwardInputConfiguration>(
+        m_Device, m_InputBindingLayout, bufferGroup, m_UseInputAssembler, m_IsDX11);
 }
 
-nvrhi::BindingSetHandle ForwardShadingPass::GetOrCreateInputBindingSet(const BufferGroup* bufferGroup)
+template<GeometryInputPolicy InputPolicy>
+nvrhi::BindingSetHandle ForwardShadingPassT<InputPolicy>::GetOrCreateInputBindingSet(const BufferGroup* bufferGroup)
 {
-    if (m_SpecializeInputAssemblerTexCoords)
+    return m_Input.GetBindingSet(bufferGroup, [&](const BufferGroup* buffers)
     {
-        if (bufferGroup->texCoordFormat != TexCoordFormat::Unorm16)
-            return m_InputBindingSetFloat;
-        return m_InputBindingSetUnorm;
-    }
-
-    auto it = m_InputBindingSets.find(bufferGroup);
-    if (it == m_InputBindingSets.end())
-    {
-        auto bindingSet = CreateInputBindingSet(bufferGroup);
-        m_InputBindingSets[bufferGroup] = bindingSet;
-        return bindingSet;
-    }
-
-    return it->second;
+        if constexpr (InputPolicy == GeometryInputPolicy::Stock)
+            return GeometryPassInput<InputPolicy>::template CreateBindingSet<ForwardInputConfiguration>(
+                m_Device, m_InputBindingLayout, buffers, m_UseInputAssembler, m_IsDX11);
+        else
+            return CreateInputBindingSet(buffers);
+    });
 }
 
-void ForwardShadingPass::SetPushConstants(
+template<GeometryInputPolicy InputPolicy>
+void ForwardShadingPassT<InputPolicy>::SetPushConstants(
     donut::render::GeometryPassContext& abstractContext,
     nvrhi::ICommandList* commandList,
     nvrhi::GraphicsState& state,
     nvrhi::DrawArguments& args)
 {
     auto& context = static_cast<Context&>(abstractContext);
-
-    if (!m_SpecializeInputAssemblerTexCoords)
-    {
-        // Preserve the original raw/custom path, including all per-draw fields.
-        ForwardPushConstants constants = {};
-        constants.startInstanceLocation = args.startInstanceLocation;
-        constants.startVertexLocation = args.startVertexLocation;
-        constants.positionOffset = context.positionOffset;
-        constants.texCoordOffset = context.texCoordOffset;
-        constants.texCoordFormat = uint32_t(context.texCoordFormat);
-        constants.texCoordScaleBias = float4(1.f, 1.f, 0.f, 0.f);
-        if (context.texCoordFormat == TexCoordFormat::Unorm16 && context.inputBuffers)
-        {
-            const uint32_t rangeHint = context.geometry ? context.geometry->texCoordDecodeRangeIndex : ~0u;
-            const auto& decode = context.inputBuffers->getTexCoordDecodeRange(args.startVertexLocation, rangeHint).texCoord1;
-            constants.texCoordScaleBias = float4(decode.scale, decode.offset);
-        }
-        constants.normalOffset = context.normalOffset;
-        constants.tangentOffset = context.tangentOffset;
-
-        commandList->setPushConstants(&constants, sizeof(constants));
-
-        if (!m_UseInputAssembler)
-        {
-            args.startInstanceLocation = 0;
-            args.startVertexLocation = 0;
-        }
-        return;
-    }
-
-    if (context.texCoordFormat != TexCoordFormat::Unorm16)
-        return;
-
-    ForwardPushConstants constants = {};
-    constants.texCoordFormat = uint32_t(TexCoordFormat::Unorm16);
-    constants.texCoordScaleBias = float4(1.f, 1.f, 0.f, 0.f);
-    if (context.inputBuffers)
-    {
-        const uint32_t rangeHint = context.geometry ? context.geometry->texCoordDecodeRangeIndex : ~0u;
-        const auto& decode = context.inputBuffers->getTexCoordDecodeRange(args.startVertexLocation, rangeHint).texCoord1;
-        constants.texCoordScaleBias = float4(decode.scale, decode.offset);
-    }
-
-    // Only RenderView enables this cache, and it invalidates it after every
-    // graphics-state change as required by NVRHI. Manual users always write.
-    if (context.enablePushConstantCaching && context.pushConstantsValid
-        && std::memcmp(&context.lastTexCoordScaleBias, &constants.texCoordScaleBias, sizeof(float4)) == 0)
-        return;
-    context.lastTexCoordScaleBias = constants.texCoordScaleBias;
-    context.pushConstantsValid = context.enablePushConstantCaching;
-    commandList->setPushConstants(&constants, sizeof(constants));
+    m_Input.template SetPushConstants<ForwardInputConfiguration>(context, commandList, args, m_UseInputAssembler);
 }
+
+template class donut::render::detail::ForwardShadingPassT<GeometryInputPolicy::Stock>;
+template class donut::render::detail::ForwardShadingPassT<GeometryInputPolicy::Custom>;

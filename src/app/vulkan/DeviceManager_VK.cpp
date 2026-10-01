@@ -271,9 +271,7 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL vulkanDebugCallback(
             return VK_FALSE;
     }
 
-    const auto severity = (flags & vk::DebugReportFlagBitsEXT::eError)
-        ? donut::log::Severity::Error : donut::log::Severity::Warning;
-    donut::log::message(severity, "[Vulkan: location=0x%zx code=%d, layerPrefix='%s'] %s", location, code, layerPrefix, msg);
+    donut::log::warning("[Vulkan: location=0x%zx code=%d, layerPrefix='%s'] %s", location, code, layerPrefix, msg);
 
     return VK_FALSE;
 }

@@ -15,6 +15,7 @@
 #include <donut/render/DepthPass.h>
 #include <donut/render/GBufferFillPass.h>
 #include <donut/tests/utils.h>
+#include <donut/tests/GpuTestLog.h>
 #include <nvrhi/utils.h>
 #include <nvrhi/common/misc.h>
 
@@ -28,46 +29,12 @@ using namespace donut::math;
 #include <cstdlib>
 #include <cmath>
 #include <limits>
-#include <atomic>
 
 using namespace donut;
 using namespace donut::engine;
 using namespace donut::math;
 
-namespace
-{
-    class LogErrorCounter
-    {
-        log::Callback previous = log::GetCallback();
-        bool strictVulkanValidation;
-
-    public:
-        std::atomic<uint32_t> errors{ 0 };
-        std::atomic<uint32_t> nativeWarnings{ 0 };
-
-        explicit LogErrorCounter(bool strictVulkanValidation)
-            : strictVulkanValidation(strictVulkanValidation)
-        {
-            log::SetCallback([this](log::Severity severity, const char* message)
-            {
-                if (severity >= log::Severity::Error)
-                    ++errors;
-                else if (severity == log::Severity::Warning && std::strncmp(message, "[Vulkan:", 8) == 0)
-                    ++nativeWarnings;
-                previous(severity, message);
-            });
-        }
-
-        ~LogErrorCounter() { log::SetCallback(previous); }
-
-        void Report() const
-        {
-            if (strictVulkanValidation)
-                std::printf("Validation log: %u errors, %u native warnings (all messages reported)\n",
-                    errors.load(), nativeWarnings.load());
-        }
-    };
-}
+using donut::tests::LogErrorCounter;
 
 static_assert(sizeof(GeometryData) == 96);
 static_assert(offsetof(GeometryData, texCoordFormat) == 52);
@@ -266,6 +233,7 @@ struct Fixture
     std::shared_ptr<SkinnedMeshInstance> skin;
     std::vector<float2> uv1;
     std::vector<float2> uv2;
+    std::vector<uint32_t> expectedPackedUV1;
     TexCoordFormat expectedFormat;
 };
 
@@ -486,6 +454,8 @@ static void CheckGpuUVs(nvrhi::IDevice* device, nvrhi::IComputePipeline* pipelin
                             && std::abs(double(actual[axis]) - decoded[axis]) <= tolerance;
                     }
                     decodedMatches &= result[vertex * 8 + stream * 4 + 3] == 0;
+                    if (stream == 0 && !fixture.expectedPackedUV1.empty())
+                        decodedMatches &= result[vertex * 8 + 2] == fixture.expectedPackedUV1[first + vertex];
                     if (!decodedMatches)
                     {
                         const auto* words = result + vertex * 8 + stream * 4;
@@ -561,6 +531,16 @@ static void TestGpu(nvrhi::IDevice* device, const char* shaderDirectory)
         fixtures.push_back(AddFixture(graph, factory, format, 7, false, false));
         fixtures.push_back(AddFixture(graph, factory, format, 7, true, true));
     }
+    // Check the uploaded words at endpoints and around rounding boundaries. In [0,1],
+    // 0.7f is just below a midpoint; FP32 packing would incorrectly round it up to 45875.
+    Fixture rounding = AddFixture(graph, factory, TexCoordFormat::Unorm16, 6, false, false);
+    rounding.uv1 = { float2(0.f), float2(1.f), float2(std::nextafter(0.5f, 0.f)),
+        float2(0.5f), float2(std::nextafter(0.5f, 1.f)), float2(0.7f) };
+    rounding.expectedPackedUV1 = { 0x00000000u, 0xffffffffu, 0x7fff7fffu,
+        0x80008000u, 0x80008000u, 0xb332b332u };
+    rounding.mesh->buffers->texcoord1Data = rounding.uv1;
+    fixtures.push_back(rounding);
+
     for (float exceptional : { 65505.f, -65505.f, std::numeric_limits<float>::infinity(),
         std::numeric_limits<float>::quiet_NaN() })
         fixtures.push_back(AddFixture(graph, factory, TexCoordFormat::Float16, 7, true, false, exceptional));

@@ -29,8 +29,6 @@
 #include <donut/engine/MaterialBindingCache.h>
 #include <nvrhi/utils.h>
 #include <utility>
-#include <cstring>
-#include <typeinfo>
 
 #if DONUT_WITH_STATIC_SHADERS
 #if DONUT_WITH_DX11
@@ -56,8 +54,25 @@ using namespace donut::math;
 
 using namespace donut::engine;
 using namespace donut::render;
+using namespace donut::render::detail;
 
-DepthPass::DepthPass(
+namespace
+{
+    struct DepthInputConfiguration
+    {
+        using PushConstants = DepthPushConstants;
+        static constexpr uint32_t InputSpace = DEPTH_SPACE_INPUT;
+        static constexpr uint32_t PushConstantBinding = DEPTH_BINDING_PUSH_CONSTANTS;
+        static constexpr uint32_t InstanceBinding = DEPTH_BINDING_INSTANCE_BUFFER;
+        static constexpr uint32_t VertexBinding = DEPTH_BINDING_VERTEX_BUFFER;
+        static constexpr nvrhi::ShaderType Visibility = nvrhi::ShaderType::Vertex;
+        static constexpr bool HasNormals = false;
+        static constexpr bool HasPrevPosition = false;
+    };
+}
+
+template<GeometryInputPolicy InputPolicy>
+DepthPassT<InputPolicy>::DepthPassT(
     nvrhi::IDevice* device,
     std::shared_ptr<CommonRenderPasses> commonPasses)
     : m_Device(device)
@@ -66,41 +81,30 @@ DepthPass::DepthPass(
     m_IsDX11 = m_Device->getGraphicsAPI() == nvrhi::GraphicsAPI::D3D11;
 }
 
-void DepthPass::Init(ShaderFactory& shaderFactory, const CreateParameters& params)
+template<GeometryInputPolicy InputPolicy>
+void DepthPassT<InputPolicy>::Init(ShaderFactory& shaderFactory, const CreateParameters& params)
 {
     m_UseInputAssembler = params.useInputAssembler;
 
-    m_SpecializeInputAssemblerTexCoords = m_UseInputAssembler
-        && params.specializeInputAssemblerTexCoords.value_or(typeid(*this) == typeid(DepthPass));
-    m_VertexShaderFloat = nullptr;
-    m_InputBindingLayoutFloat = nullptr;
-    m_InputBindingSetFloat = nullptr;
-    m_InputBindingSetUnorm = nullptr;
-    if (m_SpecializeInputAssemblerTexCoords)
+    m_Input.template Init<DepthInputConfiguration>(m_UseInputAssembler, [&]()
     {
         std::vector<ShaderMacro> macros = { { "DECODE_TEXCOORD", "0" } };
-        m_VertexShaderFloat = shaderFactory.CreateAutoShader("donut/passes/depth_vs.hlsl", "input_assembler",
+        return shaderFactory.CreateAutoShader("donut/passes/depth_vs.hlsl", "input_assembler",
             DONUT_MAKE_PLATFORM_SHADER(g_depth_vs_input_assembler), &macros, nvrhi::ShaderType::Vertex);
-        if (!m_VertexShaderFloat)
-            m_SpecializeInputAssemblerTexCoords = false;
-    }
+    });
 
     m_VertexShader = CreateVertexShader(shaderFactory, params);
     m_PixelShader = CreatePixelShader(shaderFactory, params);
     m_InputLayouts = {};
     m_InputLayouts[size_t(TexCoordFormat::Float32)] = CreateInputLayout(
-        m_SpecializeInputAssemblerTexCoords ? m_VertexShaderFloat : m_VertexShader, params);
+        m_Input.UsesSpecializedInput() ? m_Input.floatVertexShader : m_VertexShader, params);
     m_CreateParameters = params;
-    m_InputBindingLayout = CreateInputBindingLayout();
-    if (m_SpecializeInputAssemblerTexCoords)
-    {
-        m_InputBindingLayoutFloat = m_Device->createBindingLayout(nvrhi::BindingLayoutDesc()
-            .setVisibility(nvrhi::ShaderType::Vertex)
-            .setRegisterSpaceAndDescriptorSet(DEPTH_SPACE_INPUT));
-        m_InputBindingSetFloat = m_Device->createBindingSet(nvrhi::BindingSetDesc(), m_InputBindingLayoutFloat);
-        // The stock IA binding set contains only push constants, so it needs no BufferGroup.
-        m_InputBindingSetUnorm = CreateInputBindingSet(nullptr);
-    }
+    if constexpr (InputPolicy == GeometryInputPolicy::Stock)
+        m_InputBindingLayout = GeometryPassInput<InputPolicy>::template CreateBindingLayout<DepthInputConfiguration>(
+            m_Device, m_UseInputAssembler, m_IsDX11);
+    else
+        m_InputBindingLayout = CreateInputBindingLayout();
+    m_Input.template InitBindingSet<DepthInputConfiguration>(m_Device, m_InputBindingLayout);
 
     if (params.materialBindings)
         m_MaterialBindings = params.materialBindings;
@@ -117,13 +121,15 @@ void DepthPass::Init(ShaderFactory& shaderFactory, const CreateParameters& param
     m_SlopeScaledDepthBias = params.slopeScaledDepthBias;
 }
 
-void DepthPass::ResetBindingCache()
+template<GeometryInputPolicy InputPolicy>
+void DepthPassT<InputPolicy>::ResetBindingCache()
 {
     m_MaterialBindings->Clear();
-    m_InputBindingSets.clear();
+    m_Input.ResetBindingCache();
 }
 
-nvrhi::ShaderHandle DepthPass::CreateVertexShader(ShaderFactory& shaderFactory, const CreateParameters& params)
+template<GeometryInputPolicy InputPolicy>
+nvrhi::ShaderHandle DepthPassT<InputPolicy>::CreateVertexShader(ShaderFactory& shaderFactory, const CreateParameters& params)
 {
     char const* sourceFileName = "donut/passes/depth_vs.hlsl";
 
@@ -140,17 +146,20 @@ nvrhi::ShaderHandle DepthPass::CreateVertexShader(ShaderFactory& shaderFactory, 
     }
 }
 
-nvrhi::ShaderHandle DepthPass::CreatePixelShader(ShaderFactory& shaderFactory, const CreateParameters& params)
+template<GeometryInputPolicy InputPolicy>
+nvrhi::ShaderHandle DepthPassT<InputPolicy>::CreatePixelShader(ShaderFactory& shaderFactory, const CreateParameters& params)
 {
     return shaderFactory.CreateAutoShader("donut/passes/depth_ps.hlsl", "main", DONUT_MAKE_PLATFORM_SHADER(g_depth_ps), nullptr, nvrhi::ShaderType::Pixel);
 }
 
-nvrhi::InputLayoutHandle DepthPass::CreateInputLayout(nvrhi::IShader* vertexShader, const CreateParameters& params)
+template<GeometryInputPolicy InputPolicy>
+nvrhi::InputLayoutHandle DepthPassT<InputPolicy>::CreateInputLayout(nvrhi::IShader* vertexShader, const CreateParameters& params)
 {
     return CreateInputLayout(vertexShader, params, TexCoordFormat::Float32);
 }
 
-nvrhi::InputLayoutHandle DepthPass::CreateInputLayout(nvrhi::IShader* vertexShader, const CreateParameters& params, TexCoordFormat texCoordFormat)
+template<GeometryInputPolicy InputPolicy>
+nvrhi::InputLayoutHandle DepthPassT<InputPolicy>::CreateInputLayout(nvrhi::IShader* vertexShader, const CreateParameters& params, TexCoordFormat texCoordFormat)
 {
     if (params.useInputAssembler)
     {
@@ -167,7 +176,8 @@ nvrhi::InputLayoutHandle DepthPass::CreateInputLayout(nvrhi::IShader* vertexShad
     return nullptr;
 }
 
-void DepthPass::CreateViewBindings(nvrhi::BindingLayoutHandle& layout, nvrhi::BindingSetHandle& set, const CreateParameters& params)
+template<GeometryInputPolicy InputPolicy>
+void DepthPassT<InputPolicy>::CreateViewBindings(nvrhi::BindingLayoutHandle& layout, nvrhi::BindingSetHandle& set, const CreateParameters& params)
 {
     auto bindingLayoutDesc = nvrhi::BindingLayoutDesc()
         .setVisibility(nvrhi::ShaderType::Vertex | nvrhi::ShaderType::Pixel)
@@ -186,7 +196,8 @@ void DepthPass::CreateViewBindings(nvrhi::BindingLayoutHandle& layout, nvrhi::Bi
     set = m_Device->createBindingSet(bindingSetDesc, layout);
 }
 
-std::shared_ptr<MaterialBindingCache> DepthPass::CreateMaterialBindingCache(CommonRenderPasses& commonPasses)
+template<GeometryInputPolicy InputPolicy>
+std::shared_ptr<MaterialBindingCache> DepthPassT<InputPolicy>::CreateMaterialBindingCache(CommonRenderPasses& commonPasses)
 {
     std::vector<MaterialResourceBinding> materialBindings = {
         { MaterialResource::DiffuseTexture, DEPTH_BINDING_MATERIAL_DIFFUSE_TEXTURE },
@@ -205,12 +216,13 @@ std::shared_ptr<MaterialBindingCache> DepthPass::CreateMaterialBindingCache(Comm
         commonPasses.m_BlackTexture);
 }
 
-nvrhi::GraphicsPipelineHandle DepthPass::CreateGraphicsPipeline(PipelineKey key,
+template<GeometryInputPolicy InputPolicy>
+nvrhi::GraphicsPipelineHandle DepthPassT<InputPolicy>::CreateGraphicsPipeline(PipelineKey key,
     nvrhi::FramebufferInfo const& framebufferInfo)
 {
     const auto texCoordFormat = static_cast<TexCoordFormat>(key.bits.texCoordFormat);
-    const bool floatingInput = m_SpecializeInputAssemblerTexCoords && texCoordFormat != TexCoordFormat::Unorm16;
-    const auto& vertexShader = floatingInput ? m_VertexShaderFloat : m_VertexShader;
+    const bool floatingInput = m_Input.UsesSpecializedInput() && texCoordFormat != TexCoordFormat::Unorm16;
+    const auto& vertexShader = floatingInput ? m_Input.floatVertexShader : m_VertexShader;
     if (size_t(texCoordFormat) >= m_InputLayouts.size())
         return nullptr;
     auto& inputLayout = m_InputLayouts[size_t(texCoordFormat)];
@@ -243,131 +255,57 @@ nvrhi::GraphicsPipelineHandle DepthPass::CreateGraphicsPipeline(PipelineKey key,
         pipelineDesc.bindingLayouts.push_back(m_MaterialBindings->GetLayout());
     }
 
-    pipelineDesc.bindingLayouts.push_back(floatingInput ? m_InputBindingLayoutFloat : m_InputBindingLayout);
+    pipelineDesc.bindingLayouts.push_back(floatingInput ? m_Input.floatBindingLayout : m_InputBindingLayout);
 
     return m_Device->createGraphicsPipeline(pipelineDesc, framebufferInfo);
 }
 
-nvrhi::BindingLayoutHandle DepthPass::CreateInputBindingLayout()
+template<GeometryInputPolicy InputPolicy>
+nvrhi::BindingLayoutHandle DepthPassT<InputPolicy>::CreateInputBindingLayout()
 {
-    auto bindingLayoutDesc = nvrhi::BindingLayoutDesc()
-        .setVisibility(nvrhi::ShaderType::Vertex)
-        .setRegisterSpaceAndDescriptorSet(DEPTH_SPACE_INPUT)
-        .addItem(nvrhi::BindingLayoutItem::PushConstants(DEPTH_BINDING_PUSH_CONSTANTS, sizeof(DepthPushConstants)));
-
-    if (!m_UseInputAssembler)
-    {
-        bindingLayoutDesc
-            .addItem(m_IsDX11
-                ? nvrhi::BindingLayoutItem::RawBuffer_SRV(DEPTH_BINDING_INSTANCE_BUFFER)
-                : nvrhi::BindingLayoutItem::StructuredBuffer_SRV(DEPTH_BINDING_INSTANCE_BUFFER))
-            .addItem(nvrhi::BindingLayoutItem::RawBuffer_SRV(DEPTH_BINDING_VERTEX_BUFFER));
-    }
-
-    return m_Device->createBindingLayout(bindingLayoutDesc);
+    return GeometryPassInput<InputPolicy>::template CreateBindingLayout<DepthInputConfiguration>(
+        m_Device, m_UseInputAssembler, m_IsDX11);
 }
 
-nvrhi::BindingSetHandle DepthPass::CreateInputBindingSet(const BufferGroup* bufferGroup)
+template<GeometryInputPolicy InputPolicy>
+nvrhi::BindingSetHandle DepthPassT<InputPolicy>::CreateInputBindingSet(const BufferGroup* bufferGroup)
 {
-    auto bindingSetDesc = nvrhi::BindingSetDesc()
-        .addItem(nvrhi::BindingSetItem::PushConstants(DEPTH_BINDING_PUSH_CONSTANTS, sizeof(DepthPushConstants)));
-
-    if (!m_UseInputAssembler)
-    {
-        bindingSetDesc
-            .addItem(m_IsDX11
-                ? nvrhi::BindingSetItem::RawBuffer_SRV(DEPTH_BINDING_INSTANCE_BUFFER, bufferGroup->instanceBuffer)
-                : nvrhi::BindingSetItem::StructuredBuffer_SRV(DEPTH_BINDING_INSTANCE_BUFFER, bufferGroup->instanceBuffer))
-            .addItem(nvrhi::BindingSetItem::RawBuffer_SRV(DEPTH_BINDING_VERTEX_BUFFER, bufferGroup->vertexBuffer));
-    }
-
-    return m_Device->createBindingSet(bindingSetDesc, m_InputBindingLayout);
+    return GeometryPassInput<InputPolicy>::template CreateBindingSet<DepthInputConfiguration>(
+        m_Device, m_InputBindingLayout, bufferGroup, m_UseInputAssembler, m_IsDX11);
 }
 
-nvrhi::BindingSetHandle DepthPass::GetOrCreateInputBindingSet(const BufferGroup* bufferGroup)
+template<GeometryInputPolicy InputPolicy>
+nvrhi::BindingSetHandle DepthPassT<InputPolicy>::GetOrCreateInputBindingSet(const BufferGroup* bufferGroup)
 {
-    if (m_SpecializeInputAssemblerTexCoords)
+    return m_Input.GetBindingSet(bufferGroup, [&](const BufferGroup* buffers)
     {
-        if (bufferGroup->texCoordFormat != TexCoordFormat::Unorm16)
-            return m_InputBindingSetFloat;
-        return m_InputBindingSetUnorm;
-    }
-
-    auto it = m_InputBindingSets.find(bufferGroup);
-    if (it == m_InputBindingSets.end())
-    {
-        auto bindingSet = CreateInputBindingSet(bufferGroup);
-        m_InputBindingSets[bufferGroup] = bindingSet;
-        return bindingSet;
-    }
-
-    return it->second;
+        if constexpr (InputPolicy == GeometryInputPolicy::Stock)
+            return GeometryPassInput<InputPolicy>::template CreateBindingSet<DepthInputConfiguration>(
+                m_Device, m_InputBindingLayout, buffers, m_UseInputAssembler, m_IsDX11);
+        else
+            return CreateInputBindingSet(buffers);
+    });
 }
 
-void DepthPass::SetPushConstants(
+template<GeometryInputPolicy InputPolicy>
+void DepthPassT<InputPolicy>::SetPushConstants(
     donut::render::GeometryPassContext& abstractContext,
     nvrhi::ICommandList* commandList,
     nvrhi::GraphicsState& state,
     nvrhi::DrawArguments& args)
 {
     auto& context = static_cast<Context&>(abstractContext);
-
-    if (!m_SpecializeInputAssemblerTexCoords)
-    {
-        // Preserve the original raw/custom path, including all per-draw fields.
-        DepthPushConstants constants = {};
-        constants.startInstanceLocation = args.startInstanceLocation;
-        constants.startVertexLocation = args.startVertexLocation;
-        constants.positionOffset = context.positionOffset;
-        constants.texCoordOffset = context.texCoordOffset;
-        constants.texCoordFormat = uint32_t(context.texCoordFormat);
-        constants.texCoordScaleBias = float4(1.f, 1.f, 0.f, 0.f);
-        if (context.texCoordFormat == TexCoordFormat::Unorm16 && context.inputBuffers)
-        {
-            const uint32_t rangeHint = context.geometry ? context.geometry->texCoordDecodeRangeIndex : ~0u;
-            const auto& decode = context.inputBuffers->getTexCoordDecodeRange(args.startVertexLocation, rangeHint).texCoord1;
-            constants.texCoordScaleBias = float4(decode.scale, decode.offset);
-        }
-
-        commandList->setPushConstants(&constants, sizeof(constants));
-
-        if (!m_UseInputAssembler)
-        {
-            args.startInstanceLocation = 0;
-            args.startVertexLocation = 0;
-        }
-        return;
-    }
-
-    if (context.texCoordFormat != TexCoordFormat::Unorm16)
-        return;
-
-    DepthPushConstants constants = {};
-    constants.texCoordFormat = uint32_t(TexCoordFormat::Unorm16);
-    constants.texCoordScaleBias = float4(1.f, 1.f, 0.f, 0.f);
-    if (context.inputBuffers)
-    {
-        const uint32_t rangeHint = context.geometry ? context.geometry->texCoordDecodeRangeIndex : ~0u;
-        const auto& decode = context.inputBuffers->getTexCoordDecodeRange(args.startVertexLocation, rangeHint).texCoord1;
-        constants.texCoordScaleBias = float4(decode.scale, decode.offset);
-    }
-
-    // Only RenderView enables this cache, and it invalidates it after every
-    // graphics-state change as required by NVRHI. Manual users always write.
-    if (context.enablePushConstantCaching && context.pushConstantsValid
-        && std::memcmp(&context.lastTexCoordScaleBias, &constants.texCoordScaleBias, sizeof(float4)) == 0)
-        return;
-    context.lastTexCoordScaleBias = constants.texCoordScaleBias;
-    context.pushConstantsValid = context.enablePushConstantCaching;
-    commandList->setPushConstants(&constants, sizeof(constants));
+    m_Input.template SetPushConstants<DepthInputConfiguration>(context, commandList, args, m_UseInputAssembler);
 }
 
-ViewType::Enum DepthPass::GetSupportedViewTypes() const
+template<GeometryInputPolicy InputPolicy>
+ViewType::Enum DepthPassT<InputPolicy>::GetSupportedViewTypes() const
 {
     return ViewType::PLANAR;
 }
 
-void DepthPass::SetupView(GeometryPassContext& abstractContext, nvrhi::ICommandList* commandList, const engine::IView* view, const engine::IView* viewPrev)
+template<GeometryInputPolicy InputPolicy>
+void DepthPassT<InputPolicy>::SetupView(GeometryPassContext& abstractContext, nvrhi::ICommandList* commandList, const engine::IView* view, const engine::IView* viewPrev)
 {
     auto& context = static_cast<Context&>(abstractContext);
     context.pushConstantsValid = false;
@@ -380,7 +318,8 @@ void DepthPass::SetupView(GeometryPassContext& abstractContext, nvrhi::ICommandL
     context.keyTemplate.bits.reverseDepth = view->IsReverseDepth();
 }
 
-bool DepthPass::SetupMaterial(GeometryPassContext& abstractContext, const engine::Material* material, nvrhi::RasterCullMode cullMode, nvrhi::GraphicsState& state)
+template<GeometryInputPolicy InputPolicy>
+bool DepthPassT<InputPolicy>::SetupMaterial(GeometryPassContext& abstractContext, const engine::Material* material, nvrhi::RasterCullMode cullMode, nvrhi::GraphicsState& state)
 {
     auto& context = static_cast<Context&>(abstractContext);
 
@@ -437,7 +376,8 @@ bool DepthPass::SetupMaterial(GeometryPassContext& abstractContext, const engine
     return true;
 }
 
-void DepthPass::SetupInputBuffers(GeometryPassContext& abstractContext, const engine::BufferGroup* buffers, nvrhi::GraphicsState& state)
+template<GeometryInputPolicy InputPolicy>
+void DepthPassT<InputPolicy>::SetupInputBuffers(GeometryPassContext& abstractContext, const engine::BufferGroup* buffers, nvrhi::GraphicsState& state)
 {
     auto& context = static_cast<Context&>(abstractContext);
 
@@ -462,3 +402,6 @@ void DepthPass::SetupInputBuffers(GeometryPassContext& abstractContext, const en
         context.texCoordOffset = uint32_t(buffers->getVertexBufferRange(VertexAttribute::TexCoord1).byteOffset);
     }
 }
+
+template class donut::render::detail::DepthPassT<GeometryInputPolicy::Stock>;
+template class donut::render::detail::DepthPassT<GeometryInputPolicy::Custom>;

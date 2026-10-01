@@ -51,9 +51,12 @@ include(FetchContent)
 
 option(DONUT_WITH_NVRHI "Enable NVRHI and related projects" ON)
 
-cmake_dependent_option(DONUT_WITH_DX11 "Enable the DX11 version of Donut" ON "WIN32" OFF)
+cmake_dependent_option(DONUT_WITH_DX11 "Enable the DX11 version of Donut" OFF "WIN32" OFF)
 cmake_dependent_option(DONUT_WITH_DX12 "Enable the DX12 version of Donut" ON "WIN32" OFF)
 option(DONUT_WITH_VULKAN "Enable the Vulkan version of Donut" ON)
+if (DONUT_WITH_NVRHI AND DONUT_WITH_DX11)
+    message(FATAL_ERROR "Donut's stock shaders require HLSL 2021 templates, which FXC/DX11 cannot compile. Configure with DONUT_WITH_DX11=OFF and use DX12 or Vulkan.")
+endif()
 option(DONUT_WITH_AFTERMATH "Enable Aftermath crash dump generation with Donut" OFF)
 option(DONUT_EMBED_SHADER_PDBS "Embed shader PDBs with shader binary files" OFF)
 

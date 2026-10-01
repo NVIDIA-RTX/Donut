@@ -942,8 +942,9 @@ static uint16_t PackUnorm16TexCoord(float value, float scale, float offset)
 {
     if (scale == 0.f)
         return 0;
+    // Avoid FP32 intermediate rounding that can cross a UNORM16 quantization midpoint.
     const double normalized = (double(value) - double(offset)) / double(scale);
-    return uint16_t(std::floor(std::clamp(normalized, 0.0, 1.0) * 65535.0 + 0.5));
+    return uint16_t(std::clamp(normalized, 0.0, 1.0) * 65535.0 + 0.5);
 }
 
 static void WriteTexCoords(nvrhi::ICommandList* commandList, const BufferGroup& buffers,

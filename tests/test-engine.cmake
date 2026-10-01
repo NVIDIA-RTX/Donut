@@ -32,7 +32,7 @@ foreach(test_src ${donut_engine_tests})
 
     add_dependencies(donut_all_tests "${test_name}")
 
-    add_test("${test_name}" "${test_name}")
+    add_test(NAME "${test_name}" COMMAND "${test_name}")
 
     set_property(TARGET "${test_name}" PROPERTY FOLDER "Donut/donut_tests/donut_engine_tests")
 
@@ -57,4 +57,6 @@ target_compile_definitions(test_texcoords PRIVATE DONUT_TEST_SHADER_DIR="${CMAKE
 add_dependencies(test_texcoord_raster donut_test_texcoord_shaders)
 target_link_libraries(test_texcoord_raster donut_render)
 set_tests_properties(test_texcoord_raster PROPERTIES SKIP_RETURN_CODE 77)
+
+include(${CMAKE_CURRENT_LIST_DIR}/compile-contracts.cmake)
 

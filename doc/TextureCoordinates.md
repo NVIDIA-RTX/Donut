@@ -52,13 +52,35 @@ UNORM16 falls back to FP32 for the entire group if either stream contains nonfin
 
 ## Renderer and application integration
 
-Donut's depth, forward, and GBuffer passes support all three formats through input assembler and buffer-load paths. The material ID pass inherits the GBuffer buffer-load support. Custom subclasses that customize input layouts should override `CreateInputLayout(vertexShader, params, texCoordFormat)` to supply matching layouts for each format. The original two-argument overload remains available for existing FP32 subclasses. UNORM16 input assembler attributes already arrive as normalized floats; apply the generated scale and offset once with `DecodeTexCoord`.
+Donut's depth, forward, and GBuffer passes support all three formats through input assembler and buffer-load paths. The material ID pass inherits the GBuffer buffer-load support. Subclasses of the custom pass aliases described below can override `CreateInputLayout(vertexShader, params, texCoordFormat)` to supply matching layouts for each format. The original two-argument overload remains available on those custom bases for existing FP32 implementations. UNORM16 input assembler attributes already arrive as normalized floats; apply the generated scale and offset once with `DecodeTexCoord`.
 
 Stock raster passes select the `DECODE_TEXCOORD=0` variant of `input_assembler` for FP32/FP16 inputs, avoiding decode constants and per-draw push updates. UNORM16 uses `DECODE_TEXCOORD=1` and keeps its decode constants. The define selects the shared `DecodeTexCoord<false>` or `DecodeTexCoord<true>` HLSL template specialization; the compiler removes the disabled decode without introducing a runtime branch. Calls without a template argument retain decoding by default. `RenderView` can reuse unchanged UNORM constants between draws, invalidating them after every graphics-state change and at each recording scope boundary. Direct callers of the pass methods remain uncached and do not need cache-management notifications. Buffer-load rendering still supplies its full per-draw constants.
 
-Shaders including `donut/shaders/bindless.h` require DXC with HLSL 2021 (`-HV 2021`). Donut's shader and test builds enable this explicitly for DX12 and Vulkan. Configure with `DONUT_WITH_DX11=OFF`; FXC/DX11 shader compilation is no longer supported by these templates.
+Shaders including `donut/shaders/bindless.h` require DXC with HLSL 2021 (`-HV 2021`). Donut's shader and test builds enable this explicitly for DX12 and Vulkan. `DONUT_WITH_DX11` defaults to `OFF`; an existing renderer configuration with DX11 enabled stops at configuration time with instructions to disable it. FXC/DX11 shader compilation is no longer supported by these templates.
 
-`CreateParameters::specializeInputAssemblerTexCoords` is unset by default, enabling specialization for stock passes while preserving derived passes' shader and binding behavior. A derived pass can set it to `true` after confirming that it uses the stock vertex/input binding factories and that no other shader stage or custom draw logic consumes those push constants. This opt-in permits the floating-point shader variant, shared input binding sets, and UNORM constant caching. Set it to `false` to disable specialization explicitly. Custom shader loaders selecting the stock `input_assembler` entry must include the `DECODE_TEXCOORD` permutation alongside any other shader defines.
+The input policy is selected at compile time. `DepthPass`, `ForwardShadingPass`, and `GBufferFillPass` use `GeometryInputPolicy::Stock`, enabling the floating-point shader variant, shared input binding sets, and UNORM constant caching for input-assembler rendering. Their common input implementation uses explicit per-pass binding constants and a push-constant type; incomplete configurations fail compilation. The public stock aliases make `CreateVertexShader`, both `CreateInputLayout` overloads, `CreateInputBindingLayout`, and `CreateInputBindingSet` final. Overriding these input hooks on a stock subclass is a compile error, so an incompatible override cannot be silently ignored. Pixel-shader customization remains available. The implementation templates in `detail` are internal; use the public pass aliases. Policy selection uses no RTTI or runtime specialization flag, and the wrapper adds no state or per-draw dispatch. `useInputAssembler`, each mesh's format, and its decode values remain runtime data.
+
+Passes with custom vertex shaders or input binding factories must derive from `CustomDepthPass`, `CustomForwardShadingPass`, or `CustomGBufferFillPass`. These aliases select `GeometryInputPolicy::Custom`, preserving full input constants and per-buffer calls to the existing virtual input binding factories. Migrate the base class and use that base's `CreateParameters` and `Context` types; existing input-hook signatures remain the same:
+
+```cpp
+class MyDepthPass : public donut::render::CustomDepthPass
+{
+public:
+    using Base = donut::render::CustomDepthPass;
+    using Base::Base;
+
+protected:
+    nvrhi::BindingSetHandle CreateInputBindingSet(
+        const donut::engine::BufferGroup* buffers) override;
+};
+
+MyDepthPass::CreateParameters params;
+MyDepthPass::Context context;
+```
+
+The compile-time checks cover the input hooks above, not the contents of shader source or arbitrary draw code. Other shader stages or draw code that consume input push constants still require a custom base; compatible pixel shading can keep the stock base. Both policies support buffer-load rendering and mixed texture-coordinate formats. Custom shader loaders selecting the stock `input_assembler` entry must include the `DECODE_TEXCOORD` permutation alongside any other shader defines.
+
+Include the pass headers instead of forward-declaring these aliases as classes, and rebuild consumers for the new C++ types.
 
 Application-specific ray tracing shaders and custom vertex-buffer readers require a separate migration before enabling a 16-bit format. `GeometryData::texCoordFormat` records the actual encoding (`0` for FP32, `1` for FP16, `2` for UNORM16). Include `donut/shaders/bindless.h` and use its shared geometry loader after checking for absent attributes:
 
@@ -86,6 +108,8 @@ test_texcoords -dx12 --gpu <Donut shaders>/dxil
 test_texcoord_raster -dx12 --gpu <Donut shaders>/dxil --test-shaders <Donut test build>/shaders/dxil
 ```
 
-Use `-vk` and `spirv` for Vulkan. GPU tests require a device for the requested API and enable NVRHI validation. Add `--debug-runtime` to request the API's native validation runtime; on Vulkan this also requires and verifies an active `VK_LAYER_KHRONOS_validation` layer. Tests fail on logged errors, including resource teardown errors, and report native warnings separately.
+Use `-vk` and `spirv` for Vulkan. GPU tests require a device for the requested API and enable NVRHI validation. Add `--debug-runtime` to request the API's native validation runtime; on Vulkan this also requires and verifies an active `VK_LAYER_KHRONOS_validation` layer. Tests fail on logged errors, including resource teardown errors. Since the device manager's legacy Vulkan debug-report callback logs errors as warnings, the test logger also fails on unclassified messages from that callback. Only its exact known unused-vertex-attribute warning at location 1 is accepted. The debug-utils callback preserves severity and needs no such classification. All messages are printed; `test_gpu_log` checks this classification without a GPU.
 
-The upload test checks all three formats, both UV streams, odd counts, large offsets, negative/tiled coordinates, zero-width bounds, shared/overlapping mesh ranges, FP32 fallback, and skinning. CPU checks cover missing/stale hints and live metadata changes. The raster test checks mixed formats, changing/equal decode values, state resets, repeated views and command lists, and manual pass callers across depth, forward, and GBuffer passes, plus a custom legacy Depth vertex shader. It also observes material constants across buffer switches, compatible framebuffer changes, and a material-cache clear within a view. GBuffer checks UV output with both motion-vector variants. Without GPU arguments, CTest marks the raster test as skipped.
+Run `ctest -C Release -L compile-contracts --output-on-failure` from the build directory to check valid custom extensions, rejected stock input-hook overrides, and missing configuration fields. These tests compile isolated targets with the configured toolchain and verify the expected diagnostics for rejected programs.
+
+The upload test checks all three formats, both UV streams, odd counts, large offsets, negative/tiled coordinates, zero-width bounds, shared/overlapping mesh ranges, FP32 fallback, and skinning. CPU checks cover missing/stale hints and live metadata changes. The raster test checks both input policies through input-assembler and buffer-load rendering across depth, forward, and GBuffer passes: mixed formats, changing/equal decode values, state resets, repeated views and command lists, and manual pass callers. It checks actual pipeline push-constant bindings and a custom Depth vertex shader and input binding factory. Custom Forward and GBuffer tests verify that overridden factories receive real buffer groups and that draws use the returned binding layouts and sets. It also observes material constants across buffer switches, compatible framebuffer changes, and a material-cache clear within a view. GBuffer checks UV output with both motion-vector variants. Without GPU arguments, CTest marks the raster test as skipped.

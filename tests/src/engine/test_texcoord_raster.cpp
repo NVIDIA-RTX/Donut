@@ -15,9 +15,9 @@
 #include <donut/render/DrawStrategy.h>
 #include <donut/render/ForwardShadingPass.h>
 #include <donut/render/GBufferFillPass.h>
+#include <donut/tests/GpuTestLog.h>
 
 #include <array>
-#include <atomic>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -25,12 +25,15 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <type_traits>
+#include <unordered_map>
 #include <vector>
 
 using namespace donut;
 using namespace donut::math;
 using namespace donut::engine;
 using namespace donut::render;
+using donut::tests::LogErrorCounter;
 #include <donut/shaders/bindless.h>
 
 namespace
@@ -39,72 +42,101 @@ namespace
     constexpr uint32_t Height = 32;
     constexpr size_t GroupCount = 5;
 
-    class LogErrorCounter
-    {
-        log::Callback previous = log::GetCallback();
-        bool strictVulkanValidation;
-
-    public:
-        std::atomic<uint32_t> errors{ 0 };
-        std::atomic<uint32_t> nativeWarnings{ 0 };
-
-        explicit LogErrorCounter(bool strictVulkanValidation)
-            : strictVulkanValidation(strictVulkanValidation)
-        {
-            log::SetCallback([this](log::Severity severity, const char* message)
-            {
-                if (severity >= log::Severity::Error)
-                    ++errors;
-                else if (severity == log::Severity::Warning && std::strncmp(message, "[Vulkan:", 8) == 0)
-                    ++nativeWarnings;
-                previous(severity, message);
-            });
-        }
-
-        ~LogErrorCounter() { log::SetCallback(previous); }
-
-        void Report() const
-        {
-            if (strictVulkanValidation)
-                std::printf("Validation log: %u errors, %u native warnings (all messages reported)\n",
-                    errors.load(), nativeWarnings.load());
-        }
-    };
-
     nvrhi::ShaderHandle CreateTestPixelShader(ShaderFactory& factory, const char* entry = "scene")
     {
         return factory.CreateShader("tests/texcoord_raster.hlsl", entry, nullptr, nvrhi::ShaderType::Pixel);
     }
 
-    class TestDepthPass : public DepthPass
+    template<typename Base>
+    class TestDepthPassT : public Base
     {
     public:
-        using DepthPass::DepthPass;
-        void ClearMaterialBindings() { m_MaterialBindings->Clear(); }
-        uint32_t float16LayoutCount = 0;
-        uint32_t unorm16LayoutCount = 0;
+        using Base::Base;
+        using CreateParameters = typename Base::CreateParameters;
+        void ClearMaterialBindings() { this->m_MaterialBindings->Clear(); }
 
     protected:
         nvrhi::ShaderHandle CreatePixelShader(ShaderFactory& factory, const CreateParameters&) override
         {
             return CreateTestPixelShader(factory, "depth");
         }
+    };
 
+    class TestDepthLayoutPass : public TestDepthPassT<CustomDepthPass>
+    {
+    public:
+        using TestDepthPassT<CustomDepthPass>::TestDepthPassT;
+        uint32_t float16LayoutCount = 0;
+        uint32_t unorm16LayoutCount = 0;
+
+    protected:
         nvrhi::InputLayoutHandle CreateInputLayout(nvrhi::IShader* shader, const CreateParameters& params, TexCoordFormat format) override
         {
             if (format == TexCoordFormat::Float16)
                 ++float16LayoutCount;
             if (format == TexCoordFormat::Unorm16)
                 ++unorm16LayoutCount;
-            return DepthPass::CreateInputLayout(shader, params, format);
+            return CustomDepthPass::CreateInputLayout(shader, params, format);
         }
     };
 
-    class TestForwardPass : public ForwardShadingPass
+    struct InputFactoryChecks
+    {
+        nvrhi::BindingLayoutHandle createdLayout;
+        std::unordered_map<const BufferGroup*, nvrhi::BindingSetHandle> createdSets;
+        uint32_t layoutCalls = 0;
+        bool receivedNonNullBuffers = true;
+
+        bool CheckInputFactories(const BufferGroup* buffers, const nvrhi::GraphicsState& state) const
+        {
+            const auto found = createdSets.find(buffers);
+            if (!receivedNonNullBuffers || layoutCalls == 0 || !createdLayout
+                || found == createdSets.end() || !found->second)
+                return false;
+            bool usesLayout = false;
+            for (const auto& layout : state.pipeline->getDesc().bindingLayouts)
+                usesLayout |= layout.Get() == createdLayout.Get();
+            bool usesSet = false;
+            for (const auto* binding : state.bindings)
+                usesSet |= binding == found->second.Get();
+            return usesLayout && usesSet && found->second->getLayout() == createdLayout.Get();
+        }
+    };
+
+    // Exercise the application extension points independently of their default
+    // implementations, and verify that the returned objects reach the draw.
+    template<typename Base>
+    class TestInputFactories : public Base, public InputFactoryChecks
     {
     public:
-        using ForwardShadingPass::ForwardShadingPass;
-        void ClearMaterialBindings() { m_MaterialBindings->Clear(); }
+        using Base::Base;
+
+    protected:
+        nvrhi::BindingLayoutHandle CreateInputBindingLayout() override
+        {
+            ++layoutCalls;
+            createdLayout = Base::CreateInputBindingLayout();
+            return createdLayout;
+        }
+
+        nvrhi::BindingSetHandle CreateInputBindingSet(const BufferGroup* buffers) override
+        {
+            receivedNonNullBuffers &= buffers != nullptr;
+            if (!buffers)
+                return nullptr;
+            auto bindings = Base::CreateInputBindingSet(buffers);
+            createdSets[buffers] = bindings;
+            return bindings;
+        }
+    };
+
+    template<typename Base>
+    class TestForwardPassT : public Base
+    {
+    public:
+        using Base::Base;
+        using CreateParameters = typename Base::CreateParameters;
+        void ClearMaterialBindings() { this->m_MaterialBindings->Clear(); }
 
     protected:
         nvrhi::ShaderHandle CreatePixelShader(ShaderFactory& factory, const CreateParameters&, bool) override
@@ -113,11 +145,13 @@ namespace
         }
     };
 
-    class TestGBufferPass : public GBufferFillPass
+    template<typename Base>
+    class TestGBufferPassT : public Base
     {
     public:
-        using GBufferFillPass::GBufferFillPass;
-        void ClearMaterialBindings() { m_MaterialBindings->Clear(); }
+        using Base::Base;
+        using CreateParameters = typename Base::CreateParameters;
+        void ClearMaterialBindings() { this->m_MaterialBindings->Clear(); }
 
     protected:
         nvrhi::ShaderHandle CreatePixelShader(ShaderFactory& factory, const CreateParameters&, bool) override
@@ -128,23 +162,33 @@ namespace
 
     // Existing applications can override the vertex shader. The stock fast path
     // must not silently replace their shader or omit its required constants.
-    class LegacyDepthPass : public DepthPass
+    class LegacyDepthPass : public CustomDepthPass
     {
     public:
-        using DepthPass::DepthPass;
+        using CustomDepthPass::CustomDepthPass;
         void ClearMaterialBindings() { m_MaterialBindings->Clear(); }
+        uint32_t inputBindingCount = 0;
+        bool inputBindingsReceivedBuffers = true;
 
     protected:
         nvrhi::ShaderHandle CreateVertexShader(ShaderFactory& factory, const CreateParameters& params) override
         {
             return params.useInputAssembler
                 ? factory.CreateShader("tests/texcoord_raster.hlsl", "custom_depth", nullptr, nvrhi::ShaderType::Vertex)
-                : DepthPass::CreateVertexShader(factory, params);
+                : CustomDepthPass::CreateVertexShader(factory, params);
         }
 
         nvrhi::ShaderHandle CreatePixelShader(ShaderFactory& factory, const CreateParameters&) override
         {
             return CreateTestPixelShader(factory, "depth");
+        }
+
+        nvrhi::BindingSetHandle CreateInputBindingSet(const BufferGroup* buffers) override
+        {
+            // Custom factories may use buffer-group data even with the IA path.
+            ++inputBindingCount;
+            inputBindingsReceivedBuffers &= buffers != nullptr;
+            return buffers ? CustomDepthPass::CreateInputBindingSet(buffers) : nullptr;
         }
     };
 
@@ -315,9 +359,11 @@ namespace
         }
 
         bool RenderAndCheck(nvrhi::IDevice* device, IGeometryPass& pass, GeometryPassContext& context, const char* name,
-            ForwardShadingPass* forward = nullptr, bool stressStateChanges = false, bool manualDraws = false,
-            uint32_t viewRepetitions = 1, const std::function<void()>& resetBindings = {})
+            const std::function<void(nvrhi::ICommandList*)>& prepareLights = {}, bool stressStateChanges = false, bool manualDraws = false,
+            uint32_t viewRepetitions = 1, const std::function<void()>& resetBindings = {}, bool expectSpecializedInput = false,
+            const std::function<bool(const BufferGroup*, const nvrhi::GraphicsState&)>& checkInputBindings = {})
         {
+            bool passResult = true;
             std::vector<DrawItem> sequence(draws.begin(), draws.end());
             if (stressStateChanges)
             {
@@ -339,8 +385,8 @@ namespace
                     expectedMaterial[group] = alternateMaterial->baseOrDiffuseColor.x;
             auto commands = device->createCommandList();
             commands->open();
-            if (forward)
-                forward->PrepareLights(static_cast<ForwardShadingPass::Context&>(context), commands, {}, float3(0.f), float3(0.f), {});
+            if (prepareLights)
+                prepareLights(commands);
             for (uint32_t repetition = 0; repetition < viewRepetitions; ++repetition)
             {
                 // A second view uses a distinct but compatible framebuffer with
@@ -362,6 +408,24 @@ namespace
                         pass.SetupInputBuffers(context, item.buffers, state);
                         if (!pass.SetupMaterial(context, item.material, item.cullMode, state))
                             return false;
+                        if (checkInputBindings && !checkInputBindings(item.buffers, state))
+                        {
+                            std::fprintf(stderr, "%s: custom input factories were bypassed or their bindings were not used\n", name);
+                            passResult = false;
+                        }
+                        // Check the selected pipeline, not just equivalent rendered UVs:
+                        // specialized floating-point IA pipelines must omit input constants.
+                        bool hasPushConstants = false;
+                        for (const auto& layout : state.pipeline->getDesc().bindingLayouts)
+                            if (const auto* desc = layout->getDesc())
+                                for (const auto& binding : desc->bindings)
+                                    hasPushConstants |= binding.type == nvrhi::ResourceType::PushConstants;
+                        const bool expectPushConstants = !expectSpecializedInput
+                            || item.buffers->texCoordFormat == TexCoordFormat::Unorm16;
+                        if (hasPushConstants != expectPushConstants)
+                            std::fprintf(stderr, "%s format %u: expected push constants %u, got %u\n", name,
+                                unsigned(item.buffers->texCoordFormat), unsigned(expectPushConstants), unsigned(hasPushConstants));
+                        passResult &= hasPushConstants == expectPushConstants;
                         commands->setGraphicsState(state);
                         nvrhi::DrawArguments args;
                         args.vertexCount = item.geometry->numIndices;
@@ -403,7 +467,6 @@ namespace
             const auto* pixels = static_cast<const uint8_t*>(device->mapStagingTexture(readback, {}, nvrhi::CpuAccessMode::Read, &rowPitch));
             if (!pixels)
                 return false;
-            bool passResult = true;
             for (size_t group = 0; group < GroupCount; ++group)
             {
                 float4 actual;
@@ -425,12 +488,25 @@ namespace
 
         template<typename PassType>
         bool ExercisePass(nvrhi::IDevice* device, PassType& pass, GeometryPassContext& context, const char* name,
-            ForwardShadingPass* forward = nullptr)
+            bool expectSpecializedInput = false)
         {
-            bool passed = RenderAndCheck(device, pass, context, name, forward);
+            std::function<void(nvrhi::ICommandList*)> prepareLights;
+            if constexpr (std::is_base_of_v<ForwardShadingPass, PassType>
+                || std::is_base_of_v<CustomForwardShadingPass, PassType>)
+                prepareLights = [&](nvrhi::ICommandList* commands)
+                {
+                    pass.PrepareLights(static_cast<typename PassType::Context&>(context), commands, {}, float3(0.f), float3(0.f), {});
+                };
+            std::function<bool(const BufferGroup*, const nvrhi::GraphicsState&)> checkInputBindings;
+            if constexpr (std::is_base_of_v<InputFactoryChecks, PassType>)
+                checkInputBindings = [&](const BufferGroup* buffers, const nvrhi::GraphicsState& state)
+                {
+                    return pass.CheckInputFactories(buffers, state);
+                };
+            bool passed = RenderAndCheck(device, pass, context, name, prepareLights);
             // Reuse the pass and context across command lists, and twice in one list.
             passed &= RenderAndCheck(device, pass, context, (std::string(name) + " repeated/state resets").c_str(),
-                forward, true, false, 2);
+                prepareLights, true, false, 2);
 
             auto& ranges = instances[2]->GetMesh()->buffers->texCoordDecodeRanges;
             const auto savedRanges = ranges;
@@ -442,17 +518,17 @@ namespace
             expected[3] += ranges[0].texCoord1.offset - ranges[1].texCoord1.offset;
             ranges[1].texCoord1 = ranges[0].texCoord1;
             passed &= RenderAndCheck(device, pass, context, (std::string(name) + " equal/live decode").c_str(),
-                forward, true);
+                prepareLights, true);
             ranges = savedRanges;
             expected = savedExpected;
             passed &= RenderAndCheck(device, pass, context, (std::string(name) + " manual API").c_str(),
-                forward, true, true, 2);
+                prepareLights, true, true, 2, {}, expectSpecializedInput, checkInputBindings);
             // Clear the binding cache inside one RenderView, between two FP32
             // buffers with the same material and pipeline key. The first draw
             // retains its original CB; each later draw must use the replacement.
             const auto originalMaterialBuffer = material->materialConstants;
             passed &= RenderAndCheck(device, pass, context, (std::string(name) + " material cache clear").c_str(),
-                forward, false, false, 1, [&]()
+                prepareLights, false, false, 1, [&]()
                 {
                     material->materialConstants = alternateMaterial->materialConstants;
                     // Directly clear the shared cache, independently of the pass's
@@ -542,63 +618,87 @@ static bool RunGpu(const std::filesystem::path& shaderPath, const std::filesyste
     bool passed = true;
     for (bool inputAssembler : { false, true })
     {
-        TestDepthPass depthPass(device, common);
+        TestDepthPassT<DepthPass> depthPass(device, common);
         DepthPass::CreateParameters depthParams;
         depthParams.useInputAssembler = inputAssembler;
-        // These adapters only replace the pixel shader; the stock vertex path is safe.
-        depthParams.specializeInputAssemblerTexCoords = true;
+        // These adapters only replace the pixel shader; retain the stock input policy.
         depthPass.Init(*factory, depthParams);
-        passed &= depthPass.float16LayoutCount == 0; // Legacy FP32 layouts must not eagerly require an FP16 layout.
-        passed &= depthPass.unorm16LayoutCount == 0;
         DepthPass::Context depthContext;
-        passed &= fixture.ExercisePass(device, depthPass, depthContext, inputAssembler ? "Depth IA mixed UV formats" : "Depth raw mixed UV formats");
-        passed &= depthPass.float16LayoutCount == (inputAssembler ? 1u : 0u);
-        passed &= depthPass.unorm16LayoutCount == (inputAssembler ? 1u : 0u);
+        passed &= fixture.ExercisePass(device, depthPass, depthContext,
+            inputAssembler ? "Depth IA mixed UV formats" : "Depth raw mixed UV formats", inputAssembler);
 
-        TestForwardPass forwardPass(device, common);
+        TestForwardPassT<ForwardShadingPass> forwardPass(device, common);
         ForwardShadingPass::CreateParameters forwardParams;
         forwardParams.useInputAssembler = inputAssembler;
-        forwardParams.specializeInputAssemblerTexCoords = true;
         forwardPass.Init(*factory, forwardParams);
         ForwardShadingPass::Context forwardContext;
-        passed &= fixture.ExercisePass(device, forwardPass, forwardContext, inputAssembler ? "Forward IA mixed UV formats" : "Forward raw mixed UV formats", &forwardPass);
+        passed &= fixture.ExercisePass(device, forwardPass, forwardContext,
+            inputAssembler ? "Forward IA mixed UV formats" : "Forward raw mixed UV formats", inputAssembler);
 
         for (bool motionVectors : { false, true })
         {
-            TestGBufferPass gbufferPass(device, common);
+            TestGBufferPassT<GBufferFillPass> gbufferPass(device, common);
             GBufferFillPass::CreateParameters gbufferParams;
             gbufferParams.useInputAssembler = inputAssembler;
             gbufferParams.enableMotionVectors = motionVectors;
-            gbufferParams.specializeInputAssemblerTexCoords = true;
             gbufferPass.Init(*factory, gbufferParams);
             GBufferFillPass::Context gbufferContext;
             const char* name = inputAssembler
                 ? (motionVectors ? "GBuffer IA mixed UV formats + motion vectors" : "GBuffer IA mixed UV formats")
                 : (motionVectors ? "GBuffer raw mixed UV formats + motion vectors" : "GBuffer raw mixed UV formats");
-            passed &= fixture.ExercisePass(device, gbufferPass, gbufferContext, name);
+            passed &= fixture.ExercisePass(device, gbufferPass, gbufferContext, name, inputAssembler);
         }
 
-        if (inputAssembler)
         {
-            TestDepthPass genericDepthPass(device, common);
-            depthParams.specializeInputAssemblerTexCoords = false;
-            genericDepthPass.Init(*factory, depthParams);
-            DepthPass::Context genericDepthContext;
+            TestDepthLayoutPass genericDepthPass(device, common);
+            CustomDepthPass::CreateParameters genericDepthParams;
+            genericDepthParams.useInputAssembler = inputAssembler;
+            genericDepthPass.Init(*factory, genericDepthParams);
+            // Additional layouts are created only when a format is first drawn.
+            passed &= genericDepthPass.float16LayoutCount == 0;
+            passed &= genericDepthPass.unorm16LayoutCount == 0;
+            CustomDepthPass::Context genericDepthContext;
             passed &= fixture.ExercisePass(device, genericDepthPass, genericDepthContext,
-                "Depth IA specialization disabled");
+                inputAssembler ? "Depth IA custom input policy" : "Depth raw custom input policy");
+            passed &= genericDepthPass.float16LayoutCount == (inputAssembler ? 1u : 0u);
+            passed &= genericDepthPass.unorm16LayoutCount == (inputAssembler ? 1u : 0u);
+
+            TestForwardPassT<TestInputFactories<CustomForwardShadingPass>> genericForwardPass(device, common);
+            CustomForwardShadingPass::CreateParameters genericForwardParams;
+            genericForwardParams.useInputAssembler = inputAssembler;
+            genericForwardPass.Init(*factory, genericForwardParams);
+            CustomForwardShadingPass::Context genericForwardContext;
+            passed &= fixture.ExercisePass(device, genericForwardPass, genericForwardContext,
+                inputAssembler ? "Forward IA custom input policy" : "Forward raw custom input policy");
+
+            for (bool motionVectors : { false, true })
+            {
+                TestGBufferPassT<TestInputFactories<CustomGBufferFillPass>> genericGBufferPass(device, common);
+                CustomGBufferFillPass::CreateParameters gbufferParams;
+                gbufferParams.useInputAssembler = inputAssembler;
+                gbufferParams.enableMotionVectors = motionVectors;
+                genericGBufferPass.Init(*factory, gbufferParams);
+                CustomGBufferFillPass::Context genericGBufferContext;
+                const char* name = inputAssembler
+                    ? (motionVectors ? "GBuffer IA custom input policy + motion vectors" : "GBuffer IA custom input policy")
+                    : (motionVectors ? "GBuffer raw custom input policy + motion vectors" : "GBuffer raw custom input policy");
+                passed &= fixture.ExercisePass(device, genericGBufferPass, genericGBufferContext, name);
+            }
         }
 
-        // A custom vertex shader keeps the automatic, unspecialized default.
-        depthParams.specializeInputAssemblerTexCoords.reset();
+        // Custom vertex shaders and input factories use the explicit custom base.
         LegacyDepthPass legacyPass(device, common);
-        legacyPass.Init(*factory, depthParams);
-        DepthPass::Context legacyContext;
+        CustomDepthPass::CreateParameters legacyParams;
+        legacyParams.useInputAssembler = inputAssembler;
+        legacyPass.Init(*factory, legacyParams);
+        CustomDepthPass::Context legacyContext;
         const auto unmodifiedExpected = fixture.expected;
         if (inputAssembler)
             for (size_t group = 0; group < GroupCount; ++group)
                 fixture.expected[group] += float2(0.125f + 0.0625f * fixture.draws[group].mesh->vertexOffset, 0.25f);
         passed &= fixture.ExercisePass(device, legacyPass, legacyContext,
             inputAssembler ? "Custom legacy depth IA shader" : "Custom legacy depth raw shader");
+        passed &= legacyPass.inputBindingCount > 0 && legacyPass.inputBindingsReceivedBuffers;
         fixture.expected = unmodifiedExpected;
     }
     device->waitForIdle();

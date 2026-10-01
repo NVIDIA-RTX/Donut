@@ -24,11 +24,11 @@
 
 #include <donut/engine/View.h>
 #include <donut/engine/SceneTypes.h>
+#include <donut/render/GeometryPassInput.h>
 #include <donut/render/GeometryPasses.h>
 #include <array>
 #include <memory>
 #include <mutex>
-#include <optional>
 
 namespace donut::engine
 {
@@ -39,9 +39,11 @@ namespace donut::engine
     struct Material;
 }
 
-namespace donut::render
+namespace donut::render::detail
 {
-    class GBufferFillPass : public IGeometryPass
+    // Implementation shared by the public stock and custom aliases below.
+    template<GeometryInputPolicy InputPolicy>
+    class GBufferFillPassT : public IGeometryPass
     {
     public:
         union PipelineKey
@@ -96,10 +98,6 @@ namespace donut::render
             // Using Buffer SRVs is often faster.
             bool useInputAssembler = false;
 
-            // Unset specializes only the stock pass. Derived passes may opt in if they use
-            // stock vertex/input bindings and no custom shader or draw code needs input push constants.
-            std::optional<bool> specializeInputAssemblerTexCoords;
-
             uint32_t stencilWriteMask = 0;
             uint32_t numConstantBufferVersions = 16;
         };
@@ -110,11 +108,7 @@ namespace donut::render
         std::array<nvrhi::InputLayoutHandle, size_t(engine::TexCoordFormat::Count)> m_InputLayouts;
         CreateParameters m_CreateParameters;
         nvrhi::ShaderHandle m_VertexShader;
-        nvrhi::ShaderHandle m_VertexShaderFloat;
-        nvrhi::BindingLayoutHandle m_InputBindingLayoutFloat;
-        nvrhi::BindingSetHandle m_InputBindingSetFloat;
-        nvrhi::BindingSetHandle m_InputBindingSetUnorm;
-        bool m_SpecializeInputAssemblerTexCoords = false;
+        GeometryPassInput<InputPolicy> m_Input;
         nvrhi::ShaderHandle m_PixelShader;
         nvrhi::ShaderHandle m_PixelShaderAlphaTested;
         nvrhi::ShaderHandle m_GeometryShader;
@@ -125,8 +119,6 @@ namespace donut::render
         engine::ViewType::Enum m_SupportedViewTypes = engine::ViewType::PLANAR;
         nvrhi::GraphicsPipelineHandle m_Pipelines[PipelineKey::Count];
         std::mutex m_Mutex;
-
-        std::unordered_map<const engine::BufferGroup*, nvrhi::BindingSetHandle> m_InputBindingSets;
 
         std::shared_ptr<engine::CommonRenderPasses> m_CommonPasses;
         std::shared_ptr<engine::MaterialBindingCache> m_MaterialBindings;
@@ -151,7 +143,7 @@ namespace donut::render
         nvrhi::BindingSetHandle GetOrCreateInputBindingSet(const engine::BufferGroup* bufferGroup);
         
     public:
-        GBufferFillPass(nvrhi::IDevice* device, std::shared_ptr<engine::CommonRenderPasses> commonPasses);
+        GBufferFillPassT(nvrhi::IDevice* device, std::shared_ptr<engine::CommonRenderPasses> commonPasses);
 
         virtual void Init(
             engine::ShaderFactory& shaderFactory,
@@ -167,6 +159,14 @@ namespace donut::render
         void SetupInputBuffers(GeometryPassContext& context, const engine::BufferGroup* buffers, nvrhi::GraphicsState& state) override;
         void SetPushConstants(GeometryPassContext& context, nvrhi::ICommandList* commandList, nvrhi::GraphicsState& state, nvrhi::DrawArguments& args) override;
     };
+
+}
+
+namespace donut::render
+{
+    // Stock input hooks are final; derive from CustomGBufferFillPass to replace them.
+    using GBufferFillPass = detail::StockGeometryPass<detail::GBufferFillPassT<GeometryInputPolicy::Stock>>;
+    using CustomGBufferFillPass = detail::GBufferFillPassT<GeometryInputPolicy::Custom>;
 
     class MaterialIDPass : public GBufferFillPass
     {

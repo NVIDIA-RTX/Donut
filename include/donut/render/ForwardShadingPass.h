@@ -24,11 +24,11 @@
 
 #include <donut/engine/View.h>
 #include <donut/engine/SceneTypes.h>
+#include <donut/render/GeometryPassInput.h>
 #include <donut/render/GeometryPasses.h>
 #include <array>
 #include <memory>
 #include <mutex>
-#include <optional>
 #include <unordered_map>
 
 namespace donut::engine
@@ -98,9 +98,11 @@ namespace std
     };
 }
 
-namespace donut::render
+namespace donut::render::detail
 {
-    class ForwardShadingPass : public IGeometryPass
+    // Implementation shared by the public stock and custom aliases below.
+    template<GeometryInputPolicy InputPolicy>
+    class ForwardShadingPassT : public IGeometryPass
     {
     public:
 
@@ -132,10 +134,6 @@ namespace donut::render
             // Using Buffer SRVs is often faster.
             bool useInputAssembler = false;
 
-            // Unset specializes only the stock pass. Derived passes may opt in if they use
-            // stock vertex/input bindings and no custom shader or draw code needs input push constants.
-            std::optional<bool> specializeInputAssemblerTexCoords;
-
             uint32_t numConstantBufferVersions = 16;
         };
 
@@ -146,11 +144,7 @@ namespace donut::render
         std::array<nvrhi::InputLayoutHandle, size_t(engine::TexCoordFormat::Count)> m_InputLayouts;
         CreateParameters m_CreateParameters;
         nvrhi::ShaderHandle m_VertexShader;
-        nvrhi::ShaderHandle m_VertexShaderFloat;
-        nvrhi::BindingLayoutHandle m_InputBindingLayoutFloat;
-        nvrhi::BindingSetHandle m_InputBindingSetFloat;
-        nvrhi::BindingSetHandle m_InputBindingSetUnorm;
-        bool m_SpecializeInputAssemblerTexCoords = false;
+        GeometryPassInput<InputPolicy> m_Input;
         nvrhi::ShaderHandle m_PixelShader;
         nvrhi::ShaderHandle m_PixelShaderTransmissive;
         nvrhi::ShaderHandle m_GeometryShader;
@@ -169,7 +163,6 @@ namespace donut::render
 
         std::unordered_map<ForwardShadingPassPipelineKey, nvrhi::GraphicsPipelineHandle> m_Pipelines;
         std::unordered_map<std::pair<nvrhi::ITexture*, nvrhi::ITexture*>, nvrhi::BindingSetHandle> m_ShadingBindingSets;
-        std::unordered_map<const engine::BufferGroup*, nvrhi::BindingSetHandle> m_InputBindingSets;
         
         std::shared_ptr<engine::CommonRenderPasses> m_CommonPasses;
         std::shared_ptr<engine::MaterialBindingCache> m_MaterialBindings;
@@ -191,7 +184,7 @@ namespace donut::render
         nvrhi::BindingSetHandle GetOrCreateInputBindingSet(const engine::BufferGroup* bufferGroup);
 
     public:
-        ForwardShadingPass(
+        ForwardShadingPassT(
             nvrhi::IDevice* device,
             std::shared_ptr<engine::CommonRenderPasses> commonPasses);
 
@@ -218,4 +211,11 @@ namespace donut::render
         void SetPushConstants(GeometryPassContext& context, nvrhi::ICommandList* commandList, nvrhi::GraphicsState& state, nvrhi::DrawArguments& args) override;
     };
 
+}
+
+namespace donut::render
+{
+    // Stock input hooks are final; derive from CustomForwardShadingPass to replace them.
+    using ForwardShadingPass = detail::StockGeometryPass<detail::ForwardShadingPassT<GeometryInputPolicy::Stock>>;
+    using CustomForwardShadingPass = detail::ForwardShadingPassT<GeometryInputPolicy::Custom>;
 }
