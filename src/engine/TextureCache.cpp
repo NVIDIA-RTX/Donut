@@ -805,7 +805,11 @@ namespace donut::engine
             tempTexture = texture;
             break;
         default:
-            desc.format = nvrhi::Format::SRGBA8_UNORM;
+        {
+            // Non-sRGB UNORM sources already hold display-encoded values; don't encode them again.
+            const nvrhi::FormatInfo& formatInfo = nvrhi::getFormatInfo(desc.format);
+            desc.format = (formatInfo.kind == nvrhi::FormatKind::Normalized && !formatInfo.isSRGB)
+                ? nvrhi::Format::RGBA8_UNORM : nvrhi::Format::SRGBA8_UNORM;
             desc.isRenderTarget = true;
             desc.initialState = nvrhi::ResourceStates::RenderTarget;
             desc.keepInitialState = true;
@@ -814,6 +818,7 @@ namespace donut::engine
             tempFramebuffer = device->createFramebuffer(nvrhi::FramebufferDesc().addColorAttachment(tempTexture));
             
             pPasses->BlitTexture(commandList, tempFramebuffer, texture);
+        }
         }
 
         // Create a staging texture to access the data from the CPU, copy the data into it
