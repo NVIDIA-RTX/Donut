@@ -37,7 +37,10 @@ add_library(donut_core STATIC EXCLUDE_FROM_ALL ${donut_core_src})
 target_include_directories(donut_core PUBLIC include)
 target_link_libraries(donut_core jsoncpp_static)
 
-if(NOT WIN32)
+if(ANDROID)
+    # libc++ has std::filesystem built in, and Bionic's libc holds pthread
+    target_link_libraries(donut_core dl)
+elseif(NOT WIN32)
     target_link_libraries(donut_core stdc++fs dl pthread)
 endif()
 

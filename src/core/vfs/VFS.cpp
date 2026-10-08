@@ -184,8 +184,14 @@ static int enumerateNativeFiles(const char* pattern, bool directories, enumerate
 
 #else // WIN32
 
+#ifdef __ANDROID__
+    // Bionic has no glob64: its glob (API 28+) takes 64-bit offsets already.
+    glob_t glob_matches;
+    int globResult = glob(pattern, 0 /*flags*/, nullptr /*errfunc*/, &glob_matches);
+#else
     glob64_t glob_matches;
     int globResult = glob64(pattern, 0 /*flags*/, nullptr /*errfunc*/, &glob_matches);
+#endif
 
     if (globResult == 0)
     {
@@ -205,7 +211,11 @@ static int enumerateNativeFiles(const char* pattern, bool directories, enumerate
                 }
             }
         }
+#ifdef __ANDROID__
+        globfree(&glob_matches);
+#else
         globfree64(&glob_matches);
+#endif
 
         return numEntries;
     }
