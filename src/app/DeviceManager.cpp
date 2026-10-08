@@ -299,7 +299,7 @@ bool DeviceManager::CreateWindowDeviceAndSwapChain(const DeviceCreationParameter
     m_DeviceParams.headlessDevice = false;
     m_RequestedVSync = m_DeviceParams.vsyncEnabled;
 
-#ifndef _WINDOWS
+#if !defined(_WINDOWS) && !defined(__ANDROID__)
     // This is necessary to get correct window decorations on Wayland
     glfwInitHint(GLFW_PLATFORM, GLFW_PLATFORM_X11);
 #endif
@@ -646,6 +646,10 @@ void DeviceManager::RunMessageLoop()
 #endif
         if (m_callbacks.beforeFrame) m_callbacks.beforeFrame(*this, m_FrameIndex);
         glfwPollEvents();
+        // A close requested by the events just handled: no frame for a window that may be gone
+        // already (on Android, it is when the activity stops)
+        if (glfwWindowShouldClose(m_Window))
+            break;
         UpdateWindowSize();
         bool presentSuccess = AnimateRenderPresent();
         if (!presentSuccess)
