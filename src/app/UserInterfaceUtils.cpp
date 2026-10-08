@@ -32,6 +32,7 @@
 #include <unistd.h>
 #include <cstdio>
 #include <climits>
+#include <sstream>
 #else
 #include <Windows.h>
 #include <ShlObj.h>
