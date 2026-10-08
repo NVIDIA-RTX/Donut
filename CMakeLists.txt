@@ -93,7 +93,7 @@ set(DONUT_STREAMLINE_FETCH_DIR "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/streamlin
 
 option(DONUT_WITH_DLSS "Enable the NGX DLSS integration, separate package required" OFF)
 set(DONUT_DLSS_FETCH_URL "https://github.com/NVIDIA/DLSS.git" CACHE STRING "URL of the DLSS Git repository to fetch from")
-set(DONUT_DLSS_FETCH_TAG "a8ed84e2d1cc1efa7bef63fb9394be6cb06c0d74" CACHE STRING "Git commit hash or tag for DLSS")
+set(DONUT_DLSS_FETCH_TAG "374959484e79a640feaba44c93ac8cfb0a03f5b5" CACHE STRING "Git commit hash or tag for DLSS") # v310.9.1, first SDK with Windows Arm64 binaries
 set(DONUT_DLSS_FETCH_DIR "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/DLSS" CACHE STRING "Directory to fetch DLSS to, empty uses build directory default")
 
 option(DONUT_WITH_KTX "Build KTX2 (BCn + Zstandard) texture loading support" ON)
