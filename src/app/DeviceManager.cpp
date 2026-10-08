@@ -444,7 +444,8 @@ bool DeviceManager::CreateWindowDeviceAndSwapChain(const DeviceCreationParameter
     glfwSetCursorPosCallback(m_Window, MousePosCallback_GLFW);
     glfwSetMouseButtonCallback(m_Window, MouseButtonCallback_GLFW);
     glfwSetScrollCallback(m_Window, MouseScrollCallback_GLFW);
-    glfwSetJoystickCallback(JoystickConnectionCallback_GLFW);
+    if (m_DeviceParams.enableJoystickInput)
+        glfwSetJoystickCallback(JoystickConnectionCallback_GLFW);
 
     // Explicitly initialize the per-monitor DPI scale factor for the window's current
     // position. The content scale callback may not fire on startup if the scale hasn't
@@ -457,7 +458,8 @@ bool DeviceManager::CreateWindowDeviceAndSwapChain(const DeviceCreationParameter
 
     // If there are multiple device managers, then this would be called by each one which isn't necessary
     // but should not hurt.
-    JoyStickManager::Singleton().EnumerateJoysticks();
+    if (m_DeviceParams.enableJoystickInput)
+        JoyStickManager::Singleton().EnumerateJoysticks();
 
     if (!CreateDevice())
         return false;
@@ -674,8 +676,11 @@ bool DeviceManager::AnimateRenderPresent()
     double curTime = glfwGetTime();
     double elapsedTime = curTime - m_PreviousFrameTimestamp;
 
-	JoyStickManager::Singleton().EraseDisconnectedJoysticks();
-	JoyStickManager::Singleton().UpdateAllJoysticks(m_vRenderPasses);
+	if (m_DeviceParams.enableJoystickInput)
+	{
+		JoyStickManager::Singleton().EraseDisconnectedJoysticks();
+		JoyStickManager::Singleton().UpdateAllJoysticks(m_vRenderPasses);
+	}
 
     if (m_windowVisible && (m_windowIsInFocus || ShouldRenderUnfocused() || m_RequestedRenderUnfocused))
     {

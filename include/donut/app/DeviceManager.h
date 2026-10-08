@@ -182,6 +182,14 @@ namespace donut::app
         bool enableComputeQueue = false;
         bool enableCopyQueue = false;
 
+        // Registers GLFW's joystick/gamepad callback and polls connected joysticks every frame.
+        // Disabled by default: on Windows, the first call into GLFW's joystick API triggers a
+        // synchronous DirectInput device enumeration, which can stall for tens of seconds when a
+        // misbehaving virtual HID/gamepad driver is present (observed with the Oculus/Meta runtime's
+        // "Virtual Gamepad Emulation Bus" and Razer Synapse's virtual controller devices). Only enable
+        // this for applications that actually read joystick input.
+        bool enableJoystickInput = false;
+
         // Index of the adapter (DX11, DX12) or physical device (Vk) on which to initialize the device.
         // Negative values mean automatic detection.
         // The order of indices matches that returned by DeviceManager::EnumerateAdapters.
