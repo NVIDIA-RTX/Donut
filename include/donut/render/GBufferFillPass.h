@@ -24,11 +24,11 @@
 
 #include <donut/engine/View.h>
 #include <donut/engine/SceneTypes.h>
-#include <donut/render/GeometryPassInput.h>
 #include <donut/render/GeometryPasses.h>
 #include <array>
 #include <memory>
 #include <mutex>
+#include <unordered_map>
 
 namespace donut::engine
 {
@@ -39,11 +39,9 @@ namespace donut::engine
     struct Material;
 }
 
-namespace donut::render::detail
+namespace donut::render
 {
-    // Implementation shared by the public stock and custom aliases below.
-    template<GeometryInputPolicy InputPolicy>
-    class GBufferFillPassImpl : public IGeometryPass
+    class GBufferFillPass : public IGeometryPass
     {
     public:
         union PipelineKey
@@ -98,6 +96,11 @@ namespace donut::render::detail
             // Using Buffer SRVs is often faster.
             bool useInputAssembler = false;
 
+            // Share IA bindings and omit unused floating-point UV constants.
+            // Disable for custom input shaders/layouts/bindings or shader stages
+            // and draw code that require the full input push constants.
+            bool enableTexCoordOptimizations = true;
+
             uint32_t stencilWriteMask = 0;
             uint32_t numConstantBufferVersions = 16;
         };
@@ -108,7 +111,10 @@ namespace donut::render::detail
         std::array<nvrhi::InputLayoutHandle, size_t(engine::TexCoordFormat::Count)> m_InputLayouts;
         CreateParameters m_CreateParameters;
         nvrhi::ShaderHandle m_VertexShader;
-        GeometryPassInput<InputPolicy> m_Input;
+        nvrhi::ShaderHandle m_FloatVertexShader;
+        nvrhi::BindingSetHandle m_FloatInputBindingSet;
+        nvrhi::BindingSetHandle m_UnormInputBindingSet;
+        std::unordered_map<const engine::BufferGroup*, nvrhi::BindingSetHandle> m_InputBindingSets;
         nvrhi::ShaderHandle m_PixelShader;
         nvrhi::ShaderHandle m_PixelShaderAlphaTested;
         nvrhi::ShaderHandle m_GeometryShader;
@@ -132,6 +138,7 @@ namespace donut::render::detail
         virtual nvrhi::ShaderHandle CreateVertexShader(engine::ShaderFactory& shaderFactory, const CreateParameters& params);
         virtual nvrhi::ShaderHandle CreateGeometryShader(engine::ShaderFactory& shaderFactory, const CreateParameters& params);
         virtual nvrhi::ShaderHandle CreatePixelShader(engine::ShaderFactory& shaderFactory, const CreateParameters& params, bool alphaTested);
+        // Legacy FP32 layout hook; 16-bit formats use the format-aware overload below.
         virtual nvrhi::InputLayoutHandle CreateInputLayout(nvrhi::IShader* vertexShader, const CreateParameters& params);
         // Override this overload to customize layouts for all texture coordinate formats.
         virtual nvrhi::InputLayoutHandle CreateInputLayout(nvrhi::IShader* vertexShader, const CreateParameters& params, engine::TexCoordFormat texCoordFormat);
@@ -143,7 +150,7 @@ namespace donut::render::detail
         nvrhi::BindingSetHandle GetOrCreateInputBindingSet(const engine::BufferGroup* bufferGroup);
         
     public:
-        GBufferFillPassImpl(nvrhi::IDevice* device, std::shared_ptr<engine::CommonRenderPasses> commonPasses);
+        GBufferFillPass(nvrhi::IDevice* device, std::shared_ptr<engine::CommonRenderPasses> commonPasses);
 
         virtual void Init(
             engine::ShaderFactory& shaderFactory,
@@ -159,14 +166,6 @@ namespace donut::render::detail
         void SetupInputBuffers(GeometryPassContext& context, const engine::BufferGroup* buffers, nvrhi::GraphicsState& state) override;
         void SetPushConstants(GeometryPassContext& context, nvrhi::ICommandList* commandList, nvrhi::GraphicsState& state, nvrhi::DrawArguments& args) override;
     };
-
-}
-
-namespace donut::render
-{
-    // Stock input hooks are final; derive from CustomGBufferFillPass to replace them.
-    using GBufferFillPass = detail::StockGeometryPass<detail::GBufferFillPassImpl<GeometryInputPolicy::Stock>>;
-    using CustomGBufferFillPass = detail::GBufferFillPassImpl<GeometryInputPolicy::Custom>;
 
     class MaterialIDPass : public GBufferFillPass
     {

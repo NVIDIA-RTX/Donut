@@ -87,7 +87,7 @@ static const uint c_SizeOfJointIndices = 8;
 static const uint c_SizeOfJointWeights = 16;
 static const uint c_SizeOfCurveRadius = 4;
 
-// Define the sizes of these structures because FXC doesn't support sizeof(x)
+// Byte strides of the shared structures used by raw-buffer loaders.
 static const uint c_SizeOfGeometryData = 6*16;
 static const uint c_SizeOfInstanceData = 7*16;
 static const uint c_SizeOfMaterialConstants = 13*16;

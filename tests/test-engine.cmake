@@ -58,5 +58,3 @@ add_dependencies(test_texcoord_raster donut_test_texcoord_shaders)
 target_link_libraries(test_texcoord_raster donut_render)
 set_tests_properties(test_texcoord_raster PROPERTIES SKIP_RETURN_CODE 77)
 
-include(${CMAKE_CURRENT_LIST_DIR}/compile-contracts.cmake)
-

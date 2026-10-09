@@ -553,6 +553,13 @@ static void TestGpu(nvrhi::IDevice* device, const char* shaderDirectory)
     overflow.mesh->buffers->texcoord2Data = overflow.uv2;
     overflow.expectedFormat = TexCoordFormat::Float32;
     fixtures.push_back(overflow);
+    // The span is finite, but rounding it to FP32 makes scale + offset overflow.
+    // A failure in the second UV stream must preserve both streams as FP32.
+    Fixture roundedOverflow = AddFixture(graph, factory, TexCoordFormat::Unorm16, 2, true, false);
+    roundedOverflow.uv2 = { float2(std::ldexp(3.f, 103), 0.f), float2(std::numeric_limits<float>::max(), 0.f) };
+    roundedOverflow.mesh->buffers->texcoord2Data = roundedOverflow.uv2;
+    roundedOverflow.expectedFormat = TexCoordFormat::Float32;
+    fixtures.push_back(roundedOverflow);
     const size_t disjointFixture = fixtures.size();
     AddSharedFixtures(fixtures, graph, factory, false);
     const size_t overlappingFixture = fixtures.size();
@@ -630,7 +637,7 @@ int main(int argc, char** argv)
         logErrors.Report();
         CHECK(logErrors.errors.load() == 0);
         printf("Texture coordinate tests: PASS (%s)\n", shaderDirectory ? "CPU and GPU"
-            : "CPU; use --gpu <Donut shader directory> [-dx11|-dx12|-vk] [--debug-runtime] for GPU tests");
+            : "CPU; use --gpu <Donut shader directory> [-dx12|-vk] [--debug-runtime] for GPU tests");
         return 0;
     }
     catch (const std::exception& error)
