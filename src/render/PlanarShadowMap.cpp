@@ -263,5 +263,7 @@ void PlanarShadowMap::FillShadowConstants(struct ShadowConstants& constants) con
 
 void PlanarShadowMap::Clear(nvrhi::ICommandList* commandList)
 {
-    commandList->clearTextureFloat(m_ShadowMapTexture, m_View->GetSubresources(), nvrhi::Color(1.f));
+    const nvrhi::FormatInfo& depthFormatInfo = nvrhi::getFormatInfo(m_ShadowMapTexture->getDesc().format);
+
+    commandList->clearDepthStencilTexture(m_ShadowMapTexture, m_View->GetSubresources(), true, 1.f, depthFormatInfo.hasStencil, 0);
 }
