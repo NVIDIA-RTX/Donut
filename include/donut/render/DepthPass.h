@@ -107,9 +107,10 @@ namespace donut::render
         // Indexed by TexCoordFormat to cache layouts for mixed-format scenes.
         std::array<nvrhi::InputLayoutHandle, size_t(engine::TexCoordFormat::Count)> m_InputLayouts;
         CreateParameters m_CreateParameters;
+        // General shader for UV decoding, buffer loads, or custom input behavior.
         nvrhi::ShaderHandle m_VertexShader;
-        nvrhi::ShaderHandle m_FloatVertexShader;
-        nvrhi::BindingSetHandle m_FloatInputBindingSet;
+        // FP32/FP16 input-assembler variant without UV decoding or input push constants.
+        nvrhi::ShaderHandle m_OptimizedFloatVertexShader;
         nvrhi::BindingSetHandle m_UnormInputBindingSet;
         std::unordered_map<const engine::BufferGroup*, nvrhi::BindingSetHandle> m_InputBindingSets;
         nvrhi::ShaderHandle m_PixelShader;

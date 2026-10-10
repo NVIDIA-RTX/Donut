@@ -79,8 +79,7 @@ void GBufferFillPass::Init(ShaderFactory& shaderFactory, const CreateParameters&
     if (params.enableSinglePassCubemap)
         m_SupportedViewTypes = ViewType::Enum(m_SupportedViewTypes | ViewType::CUBEMAP);
     
-    m_FloatVertexShader = nullptr;
-    m_FloatInputBindingSet = nullptr;
+    m_OptimizedFloatVertexShader = nullptr;
     m_UnormInputBindingSet = nullptr;
     m_InputBindingSets.clear();
     for (auto& pipeline : m_Pipelines)
@@ -92,14 +91,14 @@ void GBufferFillPass::Init(ShaderFactory& shaderFactory, const CreateParameters&
         macros.emplace_back("MOTION_VECTORS", params.enableMotionVectors ? "1" : "0");
         macros.emplace_back("DECODE_TEXCOORD", "0");
         // A missing optimized shader leaves the generic input path available.
-        m_FloatVertexShader = shaderFactory.CreateAutoShader("donut/passes/gbuffer_vs.hlsl", "input_assembler",
+        m_OptimizedFloatVertexShader = shaderFactory.CreateAutoShader("donut/passes/gbuffer_vs.hlsl", "input_assembler",
             DONUT_MAKE_PLATFORM_SHADER(g_gbuffer_vs_input_assembler), &macros, nvrhi::ShaderType::Vertex);
     }
 
     m_VertexShader = CreateVertexShader(shaderFactory, params);
     m_InputLayouts = {};
     m_InputLayouts[size_t(TexCoordFormat::Float32)] = CreateInputLayout(
-        m_FloatVertexShader != nullptr ? m_FloatVertexShader : m_VertexShader, params);
+        m_OptimizedFloatVertexShader != nullptr ? m_OptimizedFloatVertexShader : m_VertexShader, params);
     m_CreateParameters = params;
     m_GeometryShader = CreateGeometryShader(shaderFactory, params);
     m_PixelShader = CreatePixelShader(shaderFactory, params, false);
@@ -119,16 +118,8 @@ void GBufferFillPass::Init(ShaderFactory& shaderFactory, const CreateParameters&
     m_StencilWriteMask = params.stencilWriteMask;
 
     m_InputBindingLayout = CreateInputBindingLayout();
-    if (m_FloatVertexShader)
-    {
-        const auto floatInputBindingLayout = m_Device->createBindingLayout(nvrhi::BindingLayoutDesc()
-            .setVisibility(nvrhi::ShaderType::Vertex | nvrhi::ShaderType::Pixel)
-            .setRegisterSpaceAndDescriptorSet(GBUFFER_SPACE_INPUT));
-        m_FloatInputBindingSet = m_Device->createBindingSet(nvrhi::BindingSetDesc(), floatInputBindingLayout);
-        // Optimized IA bindings are shared across buffers. Custom input factories
-        // must disable enableTexCoordOptimizations to receive each BufferGroup.
+    if (m_OptimizedFloatVertexShader)
         m_UnormInputBindingSet = GBufferFillPass::CreateInputBindingSet(nullptr);
-    }
 }
 
 void GBufferFillPass::ResetBindingCache()
@@ -245,10 +236,8 @@ void GBufferFillPass::CreateViewBindings(nvrhi::BindingLayoutHandle& layout, nvr
 nvrhi::GraphicsPipelineHandle GBufferFillPass::CreateGraphicsPipeline(PipelineKey key, nvrhi::FramebufferInfo const& framebufferInfo)
 {
     const auto texCoordFormat = static_cast<TexCoordFormat>(key.bits.texCoordFormat);
-    const bool floatingInput = m_FloatVertexShader != nullptr && texCoordFormat != TexCoordFormat::Unorm16;
-    if (floatingInput && !m_FloatInputBindingSet)
-        return nullptr;
-    const auto& vertexShader = floatingInput ? m_FloatVertexShader : m_VertexShader;
+    const bool floatingInput = m_OptimizedFloatVertexShader != nullptr && texCoordFormat != TexCoordFormat::Unorm16;
+    const auto& vertexShader = floatingInput ? m_OptimizedFloatVertexShader : m_VertexShader;
     if (size_t(texCoordFormat) >= m_InputLayouts.size())
         return nullptr;
     auto& inputLayout = m_InputLayouts[size_t(texCoordFormat)];
@@ -269,7 +258,8 @@ nvrhi::GraphicsPipelineHandle GBufferFillPass::CreateGraphicsPipeline(PipelineKe
         .setCullMode(key.bits.cullMode);
     pipelineDesc.renderState.blendState.disableAlphaToCoverage();
     pipelineDesc.bindingLayouts = { m_MaterialBindings->GetLayout(), m_ViewBindingLayout };
-    pipelineDesc.bindingLayouts.push_back(floatingInput ? m_FloatInputBindingSet->getLayout() : m_InputBindingLayout.Get());
+    if (!floatingInput)
+        pipelineDesc.bindingLayouts.push_back(m_InputBindingLayout);
 
     pipelineDesc.renderState.depthStencilState
         .setDepthWriteEnable(m_EnableDepthWrite)
@@ -400,7 +390,8 @@ bool GBufferFillPass::SetupMaterial(GeometryPassContext& abstractContext, const 
     state.pipeline = pipeline;
     state.bindings = { materialBindingSet, m_ViewBindings };
     
-    state.bindings.push_back(context.inputBindingSet);
+    if (context.inputBindingSet)
+        state.bindings.push_back(context.inputBindingSet);
 
     return true;
 }
@@ -465,8 +456,9 @@ nvrhi::BindingSetHandle GBufferFillPass::CreateInputBindingSet(const BufferGroup
 
 nvrhi::BindingSetHandle GBufferFillPass::GetOrCreateInputBindingSet(const BufferGroup* bufferGroup)
 {
-    if (m_FloatVertexShader)
-        return bufferGroup->texCoordFormat == TexCoordFormat::Unorm16 ? m_UnormInputBindingSet : m_FloatInputBindingSet;
+    // nullptr means the optimized FP32/FP16 path needs no additional input binding.
+    if (m_OptimizedFloatVertexShader)
+        return bufferGroup->texCoordFormat == TexCoordFormat::Unorm16 ? m_UnormInputBindingSet : nullptr;
 
     auto it = m_InputBindingSets.find(bufferGroup);
     if (it == m_InputBindingSets.end())
@@ -485,7 +477,7 @@ void GBufferFillPass::SetPushConstants(
     nvrhi::DrawArguments& args)
 {
     auto& context = static_cast<Context&>(abstractContext);
-    if (m_FloatVertexShader)
+    if (m_OptimizedFloatVertexShader)
     {
         if (context.texCoordFormat != TexCoordFormat::Unorm16)
             return;

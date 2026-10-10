@@ -78,8 +78,7 @@ void ForwardShadingPass::Init(ShaderFactory& shaderFactory, const CreateParamete
     if (params.singlePassCubemap)
         m_SupportedViewTypes = ViewType::CUBEMAP;
     
-    m_FloatVertexShader = nullptr;
-    m_FloatInputBindingSet = nullptr;
+    m_OptimizedFloatVertexShader = nullptr;
     m_UnormInputBindingSet = nullptr;
     m_InputBindingSets.clear();
     m_Pipelines.clear();
@@ -89,14 +88,14 @@ void ForwardShadingPass::Init(ShaderFactory& shaderFactory, const CreateParamete
     {
         std::vector<ShaderMacro> macros = { { "DECODE_TEXCOORD", "0" } };
         // A missing optimized shader leaves the generic input path available.
-        m_FloatVertexShader = shaderFactory.CreateAutoShader("donut/passes/forward_vs.hlsl", "input_assembler",
+        m_OptimizedFloatVertexShader = shaderFactory.CreateAutoShader("donut/passes/forward_vs.hlsl", "input_assembler",
             DONUT_MAKE_PLATFORM_SHADER(g_forward_vs_input_assembler), &macros, nvrhi::ShaderType::Vertex);
     }
 
     m_VertexShader = CreateVertexShader(shaderFactory, params);
     m_InputLayouts = {};
     m_InputLayouts[size_t(TexCoordFormat::Float32)] = CreateInputLayout(
-        m_FloatVertexShader != nullptr ? m_FloatVertexShader : m_VertexShader, params);
+        m_OptimizedFloatVertexShader != nullptr ? m_OptimizedFloatVertexShader : m_VertexShader, params);
     m_CreateParameters = params;
     m_GeometryShader = CreateGeometryShader(shaderFactory, params);
     m_PixelShader = CreatePixelShader(shaderFactory, params, false);
@@ -119,16 +118,8 @@ void ForwardShadingPass::Init(ShaderFactory& shaderFactory, const CreateParamete
     m_ViewBindingSet = CreateViewBindingSet();
     m_ShadingBindingLayout = CreateShadingBindingLayout();
     m_InputBindingLayout = CreateInputBindingLayout();
-    if (m_FloatVertexShader)
-    {
-        const auto floatInputBindingLayout = m_Device->createBindingLayout(nvrhi::BindingLayoutDesc()
-            .setVisibility(nvrhi::ShaderType::Vertex)
-            .setRegisterSpaceAndDescriptorSet(FORWARD_SPACE_INPUT));
-        m_FloatInputBindingSet = m_Device->createBindingSet(nvrhi::BindingSetDesc(), floatInputBindingLayout);
-        // Optimized IA bindings are shared across buffers. Custom input factories
-        // must disable enableTexCoordOptimizations to receive each BufferGroup.
+    if (m_OptimizedFloatVertexShader)
         m_UnormInputBindingSet = ForwardShadingPass::CreateInputBindingSet(nullptr);
-    }
 }
 
 void ForwardShadingPass::ResetBindingCache()
@@ -274,10 +265,8 @@ nvrhi::BindingSetHandle ForwardShadingPass::CreateShadingBindingSet(nvrhi::IText
 nvrhi::GraphicsPipelineHandle ForwardShadingPass::CreateGraphicsPipeline(ForwardShadingPassPipelineKey const& key,
     nvrhi::FramebufferInfo const& framebufferInfo)
 {
-    const bool floatingInput = m_FloatVertexShader != nullptr && key.texCoordFormat != TexCoordFormat::Unorm16;
-    if (floatingInput && !m_FloatInputBindingSet)
-        return nullptr;
-    const auto& vertexShader = floatingInput ? m_FloatVertexShader : m_VertexShader;
+    const bool floatingInput = m_OptimizedFloatVertexShader != nullptr && key.texCoordFormat != TexCoordFormat::Unorm16;
+    const auto& vertexShader = floatingInput ? m_OptimizedFloatVertexShader : m_VertexShader;
     if (size_t(key.texCoordFormat) >= m_InputLayouts.size())
         return nullptr;
     auto& inputLayout = m_InputLayouts[size_t(key.texCoordFormat)];
@@ -298,7 +287,8 @@ nvrhi::GraphicsPipelineHandle ForwardShadingPass::CreateGraphicsPipeline(Forward
     pipelineDesc.renderState.blendState.alphaToCoverageEnable = false;
     pipelineDesc.shadingRateState = key.shadingRateState;
     pipelineDesc.bindingLayouts = { m_MaterialBindings->GetLayout(), m_ViewBindingLayout, m_ShadingBindingLayout };
-    pipelineDesc.bindingLayouts.push_back(floatingInput ? m_FloatInputBindingSet->getLayout() : m_InputBindingLayout.Get());
+    if (!floatingInput)
+        pipelineDesc.bindingLayouts.push_back(m_InputBindingLayout);
 
     bool const framebufferUsesMSAA = framebufferInfo.sampleCount > 1;
 
@@ -556,7 +546,8 @@ bool ForwardShadingPass::SetupMaterial(GeometryPassContext& abstractContext, con
     state.pipeline = pipeline;
     state.bindings = { materialBindingSet, m_ViewBindingSet, context.shadingBindingSet };
     
-    state.bindings.push_back(context.inputBindingSet);
+    if (context.inputBindingSet)
+        state.bindings.push_back(context.inputBindingSet);
 
     return true;
 }
@@ -620,8 +611,9 @@ nvrhi::BindingSetHandle ForwardShadingPass::CreateInputBindingSet(const BufferGr
 
 nvrhi::BindingSetHandle ForwardShadingPass::GetOrCreateInputBindingSet(const BufferGroup* bufferGroup)
 {
-    if (m_FloatVertexShader)
-        return bufferGroup->texCoordFormat == TexCoordFormat::Unorm16 ? m_UnormInputBindingSet : m_FloatInputBindingSet;
+    // nullptr means the optimized FP32/FP16 path needs no additional input binding.
+    if (m_OptimizedFloatVertexShader)
+        return bufferGroup->texCoordFormat == TexCoordFormat::Unorm16 ? m_UnormInputBindingSet : nullptr;
 
     auto it = m_InputBindingSets.find(bufferGroup);
     if (it == m_InputBindingSets.end())
@@ -640,7 +632,7 @@ void ForwardShadingPass::SetPushConstants(
     nvrhi::DrawArguments& args)
 {
     auto& context = static_cast<Context&>(abstractContext);
-    if (m_FloatVertexShader)
+    if (m_OptimizedFloatVertexShader)
     {
         if (context.texCoordFormat != TexCoordFormat::Unorm16)
             return;
