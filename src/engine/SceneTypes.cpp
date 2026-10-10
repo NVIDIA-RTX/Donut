@@ -24,6 +24,7 @@
 #include <donut/engine/ShadowMap.h>
 #include <donut/core/json.h>
 #include <json/json-forwards.h>
+#include <algorithm>
 
 using namespace donut::math;
 #include <donut/shaders/light_cb.h>
@@ -337,7 +338,32 @@ bool PointLight::SetProperty(const std::string& name, const dm::float4& value)
     return Light::SetProperty(name, value);
 }
 
-nvrhi::VertexAttributeDesc donut::engine::GetVertexAttributeDesc(VertexAttribute attribute, const char* name, uint32_t bufferIndex)
+uint32_t BufferGroup::getTexCoordDecodeRangeIndex(uint32_t vertexIndex) const
+{
+    const auto next = std::upper_bound(texCoordDecodeRanges.begin(), texCoordDecodeRanges.end(), vertexIndex,
+        [](uint32_t vertex, const TexCoordDecodeRange& range) { return vertex < range.vertexOffset; });
+    if (next != texCoordDecodeRanges.begin())
+    {
+        const auto& range = *(next - 1);
+        if (vertexIndex - range.vertexOffset < range.numVertices)
+            return uint32_t(next - texCoordDecodeRanges.begin() - 1);
+    }
+
+    return ~0u;
+}
+
+const TexCoordDecodeRange& BufferGroup::getTexCoordDecodeRange(uint32_t vertexIndex) const
+{
+    const uint32_t rangeIndex = getTexCoordDecodeRangeIndex(vertexIndex);
+    if (rangeIndex != ~0u)
+        return texCoordDecodeRanges[rangeIndex];
+
+    static const TexCoordDecodeRange identity;
+    return identity;
+}
+
+nvrhi::VertexAttributeDesc donut::engine::GetVertexAttributeDesc(VertexAttribute attribute, const char* name, uint32_t bufferIndex,
+    TexCoordFormat texCoordFormat)
 {
     nvrhi::VertexAttributeDesc result = {};
     result.name = name;
@@ -353,8 +379,9 @@ nvrhi::VertexAttributeDesc donut::engine::GetVertexAttributeDesc(VertexAttribute
         break;
     case VertexAttribute::TexCoord1:
     case VertexAttribute::TexCoord2:
-        result.format = nvrhi::Format::RG32_FLOAT;
-        result.elementStride = sizeof(float2);
+        result.format = texCoordFormat == TexCoordFormat::Float32 ? nvrhi::Format::RG32_FLOAT
+            : texCoordFormat == TexCoordFormat::Float16 ? nvrhi::Format::RG16_FLOAT : nvrhi::Format::RG16_UNORM;
+        result.elementStride = texCoordFormat == TexCoordFormat::Float32 ? sizeof(float2) : sizeof(uint32_t);
         break;
     case VertexAttribute::Normal:
     case VertexAttribute::Tangent:

@@ -28,6 +28,7 @@
 #define SkinningFlag_Tangents       0x04
 #define SkinningFlag_TexCoord1      0x08
 #define SkinningFlag_TexCoord2      0x10
+#define SkinningFlag_TexCoords16Bit 0x20 // Bitwise copy for either FP16 or UNORM16 pairs.
 
 struct SkinningConstants
 {

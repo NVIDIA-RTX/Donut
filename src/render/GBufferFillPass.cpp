@@ -21,6 +21,7 @@
 */
 
 #include <donut/render/GBufferFillPass.h>
+#include "TexCoordUtils.h"
 #include <donut/render/DrawStrategy.h>
 #include <donut/engine/FramebufferFactory.h>
 #include <donut/engine/ShaderFactory.h>
@@ -78,8 +79,27 @@ void GBufferFillPass::Init(ShaderFactory& shaderFactory, const CreateParameters&
     if (params.enableSinglePassCubemap)
         m_SupportedViewTypes = ViewType::Enum(m_SupportedViewTypes | ViewType::CUBEMAP);
     
+    m_OptimizedFloatVertexShader = nullptr;
+    m_UnormInputBindingSet = nullptr;
+    m_InputBindingSets.clear();
+    for (auto& pipeline : m_Pipelines)
+        pipeline = nullptr;
+
+    if (params.enableTexCoordOptimizations && m_UseInputAssembler)
+    {
+        std::vector<ShaderMacro> macros;
+        macros.emplace_back("MOTION_VECTORS", params.enableMotionVectors ? "1" : "0");
+        macros.emplace_back("DECODE_TEXCOORD", "0");
+        // A missing optimized shader leaves the generic input path available.
+        m_OptimizedFloatVertexShader = shaderFactory.CreateAutoShader("donut/passes/gbuffer_vs.hlsl", "input_assembler",
+            DONUT_MAKE_PLATFORM_SHADER(g_gbuffer_vs_input_assembler), &macros, nvrhi::ShaderType::Vertex);
+    }
+
     m_VertexShader = CreateVertexShader(shaderFactory, params);
-    m_InputLayout = CreateInputLayout(m_VertexShader, params);
+    m_InputLayouts = {};
+    m_InputLayouts[size_t(TexCoordFormat::Float32)] = CreateInputLayout(
+        m_OptimizedFloatVertexShader != nullptr ? m_OptimizedFloatVertexShader : m_VertexShader, params);
+    m_CreateParameters = params;
     m_GeometryShader = CreateGeometryShader(shaderFactory, params);
     m_PixelShader = CreatePixelShader(shaderFactory, params, false);
     m_PixelShaderAlphaTested = CreatePixelShader(shaderFactory, params, true);
@@ -98,6 +118,8 @@ void GBufferFillPass::Init(ShaderFactory& shaderFactory, const CreateParameters&
     m_StencilWriteMask = params.stencilWriteMask;
 
     m_InputBindingLayout = CreateInputBindingLayout();
+    if (m_OptimizedFloatVertexShader)
+        m_UnormInputBindingSet = GBufferFillPass::CreateInputBindingSet(nullptr);
 }
 
 void GBufferFillPass::ResetBindingCache()
@@ -115,6 +137,7 @@ nvrhi::ShaderHandle GBufferFillPass::CreateVertexShader(ShaderFactory& shaderFac
 
     if (params.useInputAssembler)
     {
+        VertexShaderMacros.emplace_back("DECODE_TEXCOORD", "1");
         return shaderFactory.CreateAutoShader(sourceFileName, "input_assembler",
             DONUT_MAKE_PLATFORM_SHADER(g_gbuffer_vs_input_assembler), &VertexShaderMacros, nvrhi::ShaderType::Vertex);
     }
@@ -164,13 +187,18 @@ nvrhi::ShaderHandle GBufferFillPass::CreatePixelShader(ShaderFactory& shaderFact
 
 nvrhi::InputLayoutHandle GBufferFillPass::CreateInputLayout(nvrhi::IShader* vertexShader, const CreateParameters& params)
 {
+    return CreateInputLayout(vertexShader, params, TexCoordFormat::Float32);
+}
+
+nvrhi::InputLayoutHandle GBufferFillPass::CreateInputLayout(nvrhi::IShader* vertexShader, const CreateParameters& params, TexCoordFormat texCoordFormat)
+{
     if (params.useInputAssembler)
     {
         std::vector<nvrhi::VertexAttributeDesc> inputDescs =
         {
             GetVertexAttributeDesc(VertexAttribute::Position, "POS", 0),
             GetVertexAttributeDesc(VertexAttribute::PrevPosition, "PREV_POS", 1),
-            GetVertexAttributeDesc(VertexAttribute::TexCoord1, "TEXCOORD", 2),
+            GetVertexAttributeDesc(VertexAttribute::TexCoord1, "TEXCOORD", 2, texCoordFormat),
             GetVertexAttributeDesc(VertexAttribute::Normal, "NORMAL", 3),
             GetVertexAttributeDesc(VertexAttribute::Tangent, "TANGENT", 4),
             GetVertexAttributeDesc(VertexAttribute::Transform, "TRANSFORM", 5),
@@ -207,16 +235,30 @@ void GBufferFillPass::CreateViewBindings(nvrhi::BindingLayoutHandle& layout, nvr
 
 nvrhi::GraphicsPipelineHandle GBufferFillPass::CreateGraphicsPipeline(PipelineKey key, nvrhi::FramebufferInfo const& framebufferInfo)
 {
+    const auto texCoordFormat = static_cast<TexCoordFormat>(key.bits.texCoordFormat);
+    const bool floatingInput = m_OptimizedFloatVertexShader != nullptr && texCoordFormat != TexCoordFormat::Unorm16;
+    const auto& vertexShader = floatingInput ? m_OptimizedFloatVertexShader : m_VertexShader;
+    if (size_t(texCoordFormat) >= m_InputLayouts.size())
+        return nullptr;
+    auto& inputLayout = m_InputLayouts[size_t(texCoordFormat)];
+
+    if (texCoordFormat != TexCoordFormat::Float32 && !inputLayout)
+    {
+        inputLayout = CreateInputLayout(vertexShader, m_CreateParameters, texCoordFormat);
+        if (!inputLayout)
+            return nullptr;
+    }
+
     nvrhi::GraphicsPipelineDesc pipelineDesc;
-    pipelineDesc.inputLayout = m_InputLayout;
-    pipelineDesc.VS = m_VertexShader;
+    pipelineDesc.inputLayout = inputLayout;
+    pipelineDesc.VS = vertexShader;
     pipelineDesc.GS = m_GeometryShader;
     pipelineDesc.renderState.rasterState
         .setFrontCounterClockwise(key.bits.frontCounterClockwise)
         .setCullMode(key.bits.cullMode);
     pipelineDesc.renderState.blendState.disableAlphaToCoverage();
     pipelineDesc.bindingLayouts = { m_MaterialBindings->GetLayout(), m_ViewBindingLayout };
-    if (!m_UseInputAssembler)
+    if (!floatingInput)
         pipelineDesc.bindingLayouts.push_back(m_InputBindingLayout);
 
     pipelineDesc.renderState.depthStencilState
@@ -290,6 +332,7 @@ ViewType::Enum GBufferFillPass::GetSupportedViewTypes() const
 void GBufferFillPass::SetupView(GeometryPassContext& abstractContext, nvrhi::ICommandList* commandList, const engine::IView* view, const engine::IView* viewPrev)
 {
     auto& context = static_cast<Context&>(abstractContext);
+    context.pushConstantsValid = false;
     
     GBufferFillConstants gbufferConstants = {};
     view->FillPlanarViewConstants(gbufferConstants.view);
@@ -347,7 +390,7 @@ bool GBufferFillPass::SetupMaterial(GeometryPassContext& abstractContext, const 
     state.pipeline = pipeline;
     state.bindings = { materialBindingSet, m_ViewBindings };
     
-    if (!m_UseInputAssembler)
+    if (context.inputBindingSet)
         state.bindings.push_back(context.inputBindingSet);
 
     return true;
@@ -356,6 +399,11 @@ bool GBufferFillPass::SetupMaterial(GeometryPassContext& abstractContext, const 
 void GBufferFillPass::SetupInputBuffers(GeometryPassContext& abstractContext, const engine::BufferGroup* buffers, nvrhi::GraphicsState& state)
 {
     auto& context = static_cast<Context&>(abstractContext);
+
+    context.inputBuffers = buffers;
+    context.inputBindingSet = GetOrCreateInputBindingSet(buffers);
+    context.texCoordFormat = buffers->texCoordFormat;
+    context.keyTemplate.bits.texCoordFormat = uint8_t(m_UseInputAssembler ? buffers->texCoordFormat : TexCoordFormat::Float32);
 
     state.indexBuffer = { buffers->indexBuffer, nvrhi::Format::R32_UINT, 0 };
 
@@ -372,7 +420,6 @@ void GBufferFillPass::SetupInputBuffers(GeometryPassContext& abstractContext, co
     }
     else
     {
-        context.inputBindingSet = GetOrCreateInputBindingSet(buffers);
         context.positionOffset = uint32_t(buffers->getVertexBufferRange(VertexAttribute::Position).byteOffset);
         context.prevPositionOffset = uint32_t(buffers->getVertexBufferRange(VertexAttribute::PrevPosition).byteOffset);
         context.texCoordOffset = uint32_t(buffers->getVertexBufferRange(VertexAttribute::TexCoord1).byteOffset);
@@ -383,43 +430,43 @@ void GBufferFillPass::SetupInputBuffers(GeometryPassContext& abstractContext, co
 
 nvrhi::BindingLayoutHandle GBufferFillPass::CreateInputBindingLayout()
 {
-    if (m_UseInputAssembler)
-        return nullptr;
-
-    auto bindingLayoutDesc = nvrhi::BindingLayoutDesc()
+    auto desc = nvrhi::BindingLayoutDesc()
         .setVisibility(nvrhi::ShaderType::Vertex | nvrhi::ShaderType::Pixel)
         .setRegisterSpaceAndDescriptorSet(GBUFFER_SPACE_INPUT)
-        .addItem(m_IsDX11
+        .addItem(nvrhi::BindingLayoutItem::PushConstants(GBUFFER_BINDING_PUSH_CONSTANTS, sizeof(GBufferPushConstants)));
+    if (!m_UseInputAssembler)
+        desc.addItem(m_IsDX11
             ? nvrhi::BindingLayoutItem::RawBuffer_SRV(GBUFFER_BINDING_INSTANCE_BUFFER)
             : nvrhi::BindingLayoutItem::StructuredBuffer_SRV(GBUFFER_BINDING_INSTANCE_BUFFER))
-        .addItem(nvrhi::BindingLayoutItem::RawBuffer_SRV(GBUFFER_BINDING_VERTEX_BUFFER))
-        .addItem(nvrhi::BindingLayoutItem::PushConstants(GBUFFER_BINDING_PUSH_CONSTANTS, sizeof(GBufferPushConstants)));
-        
-    return m_Device->createBindingLayout(bindingLayoutDesc);
+            .addItem(nvrhi::BindingLayoutItem::RawBuffer_SRV(GBUFFER_BINDING_VERTEX_BUFFER));
+    return m_Device->createBindingLayout(desc);
 }
 
 nvrhi::BindingSetHandle GBufferFillPass::CreateInputBindingSet(const BufferGroup* bufferGroup)
 {
-    auto bindingSetDesc = nvrhi::BindingSetDesc()
-        .addItem(m_IsDX11
+    auto desc = nvrhi::BindingSetDesc().addItem(nvrhi::BindingSetItem::PushConstants(
+        GBUFFER_BINDING_PUSH_CONSTANTS, sizeof(GBufferPushConstants)));
+    if (!m_UseInputAssembler)
+        desc.addItem(m_IsDX11
             ? nvrhi::BindingSetItem::RawBuffer_SRV(GBUFFER_BINDING_INSTANCE_BUFFER, bufferGroup->instanceBuffer)
             : nvrhi::BindingSetItem::StructuredBuffer_SRV(GBUFFER_BINDING_INSTANCE_BUFFER, bufferGroup->instanceBuffer))
-        .addItem(nvrhi::BindingSetItem::RawBuffer_SRV(GBUFFER_BINDING_VERTEX_BUFFER, bufferGroup->vertexBuffer))
-        .addItem(nvrhi::BindingSetItem::PushConstants(GBUFFER_BINDING_PUSH_CONSTANTS, sizeof(GBufferPushConstants)));
-
-    return m_Device->createBindingSet(bindingSetDesc, m_InputBindingLayout);
+            .addItem(nvrhi::BindingSetItem::RawBuffer_SRV(GBUFFER_BINDING_VERTEX_BUFFER, bufferGroup->vertexBuffer));
+    return m_Device->createBindingSet(desc, m_InputBindingLayout);
 }
 
 nvrhi::BindingSetHandle GBufferFillPass::GetOrCreateInputBindingSet(const BufferGroup* bufferGroup)
 {
+    // nullptr means the optimized FP32/FP16 path needs no additional input binding.
+    if (m_OptimizedFloatVertexShader)
+        return bufferGroup->texCoordFormat == TexCoordFormat::Unorm16 ? m_UnormInputBindingSet : nullptr;
+
     auto it = m_InputBindingSets.find(bufferGroup);
     if (it == m_InputBindingSets.end())
     {
-        auto bindingSet = CreateInputBindingSet(bufferGroup);
-        m_InputBindingSets[bufferGroup] = bindingSet;
-        return bindingSet;
+        auto bindings = CreateInputBindingSet(bufferGroup);
+        m_InputBindingSets[bufferGroup] = bindings;
+        return bindings;
     }
-
     return it->second;
 }
 
@@ -429,24 +476,39 @@ void GBufferFillPass::SetPushConstants(
     nvrhi::GraphicsState& state,
     nvrhi::DrawArguments& args)
 {
-    if (m_UseInputAssembler)
-        return;
-        
     auto& context = static_cast<Context&>(abstractContext);
+    if (m_OptimizedFloatVertexShader)
+    {
+        if (context.texCoordFormat != TexCoordFormat::Unorm16)
+            return;
+        GBufferPushConstants constants = {};
+        constants.texCoordFormat = uint32_t(TexCoordFormat::Unorm16);
+        constants.texCoordScaleBias = detail::GetTexCoordScaleBias(
+            context.texCoordFormat, context.inputBuffers, context.geometry, args.startVertexLocation);
+        if (!detail::UpdateTexCoordScaleBiasCache(constants.texCoordScaleBias, context.lastTexCoordScaleBias,
+            context.enablePushConstantCaching, context.pushConstantsValid))
+            return;
+        commandList->setPushConstants(&constants, sizeof(constants));
+        return;
+    }
 
-    GBufferPushConstants constants;
+    GBufferPushConstants constants = {};
     constants.startInstanceLocation = args.startInstanceLocation;
     constants.startVertexLocation = args.startVertexLocation;
     constants.positionOffset = context.positionOffset;
-    constants.prevPositionOffset = context.prevPositionOffset;
     constants.texCoordOffset = context.texCoordOffset;
+    constants.texCoordFormat = uint32_t(context.texCoordFormat);
+    constants.texCoordScaleBias = detail::GetTexCoordScaleBias(
+        context.texCoordFormat, context.inputBuffers, context.geometry, args.startVertexLocation);
+    constants.prevPositionOffset = context.prevPositionOffset;
     constants.normalOffset = context.normalOffset;
     constants.tangentOffset = context.tangentOffset;
-
     commandList->setPushConstants(&constants, sizeof(constants));
-
-    args.startInstanceLocation = 0;
-    args.startVertexLocation = 0;
+    if (!m_UseInputAssembler)
+    {
+        args.startInstanceLocation = 0;
+        args.startVertexLocation = 0;
+    }
 }
 
 void MaterialIDPass::Init(

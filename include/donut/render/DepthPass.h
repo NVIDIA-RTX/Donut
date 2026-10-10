@@ -24,8 +24,10 @@
 
 #include <donut/engine/SceneTypes.h>
 #include <donut/render/GeometryPasses.h>
+#include <array>
 #include <memory>
 #include <mutex>
+#include <unordered_map>
 #include <nvrhi/nvrhi.h>
 
 namespace donut::engine
@@ -51,20 +53,28 @@ namespace donut::render
                 bool alphaTested : 1;
                 bool frontCounterClockwise : 1;
                 bool reverseDepth : 1;
+                // Match the other bitfield storage sizes so MSVC keeps the key in one word.
+                uint8_t texCoordFormat : 2;
             } bits;
             uint32_t value;
 
-            static constexpr size_t Count = 1 << 5;
+            static constexpr size_t Count = 1 << 7;
         };
+        static_assert(sizeof(PipelineKey) == sizeof(uint32_t), "PipelineKey bits must fit its cache key");
 
         class Context : public GeometryPassContext
         {
         public:
             nvrhi::BindingSetHandle inputBindingSet;
+            const engine::BufferGroup* inputBuffers = nullptr;
             PipelineKey keyTemplate;
 
             uint32_t positionOffset = 0;
             uint32_t texCoordOffset = 0;
+            engine::TexCoordFormat texCoordFormat = engine::TexCoordFormat::Float32;
+
+            // Keep the raw input fields together; only specialized UNORM IA uses this cache.
+            dm::float4 lastTexCoordScaleBias = dm::float4(1.f, 1.f, 0.f, 0.f);
             
             Context()
             {
@@ -84,13 +94,25 @@ namespace donut::render
             // Using Buffer SRVs is often faster.
             bool useInputAssembler = false;
 
+            // Share IA bindings and omit unused floating-point UV constants.
+            // Disable for custom input shaders/layouts/bindings or shader stages
+            // and draw code that require the full input push constants.
+            bool enableTexCoordOptimizations = true;
+
             uint32_t numConstantBufferVersions = 16;
         };
 
     protected:
         nvrhi::DeviceHandle m_Device;
-        nvrhi::InputLayoutHandle m_InputLayout;
+        // Indexed by TexCoordFormat to cache layouts for mixed-format scenes.
+        std::array<nvrhi::InputLayoutHandle, size_t(engine::TexCoordFormat::Count)> m_InputLayouts;
+        CreateParameters m_CreateParameters;
+        // General shader for UV decoding, buffer loads, or custom input behavior.
         nvrhi::ShaderHandle m_VertexShader;
+        // FP32/FP16 input-assembler variant without UV decoding or input push constants.
+        nvrhi::ShaderHandle m_OptimizedFloatVertexShader;
+        nvrhi::BindingSetHandle m_UnormInputBindingSet;
+        std::unordered_map<const engine::BufferGroup*, nvrhi::BindingSetHandle> m_InputBindingSets;
         nvrhi::ShaderHandle m_PixelShader;
         nvrhi::BindingLayoutHandle m_InputBindingLayout;
         nvrhi::BindingLayoutHandle m_ViewBindingLayout;
@@ -106,14 +128,15 @@ namespace donut::render
         bool m_UseInputAssembler = false;
         bool m_TrackLiveness = true;
 
-        std::unordered_map<const engine::BufferGroup*, nvrhi::BindingSetHandle> m_InputBindingSets;
-        
         std::shared_ptr<engine::CommonRenderPasses> m_CommonPasses;
         std::shared_ptr<engine::MaterialBindingCache> m_MaterialBindings;
 
         virtual nvrhi::ShaderHandle CreateVertexShader(engine::ShaderFactory& shaderFactory, const CreateParameters& params);
         virtual nvrhi::ShaderHandle CreatePixelShader(engine::ShaderFactory& shaderFactory, const CreateParameters& params);
+        // Legacy FP32 layout hook; 16-bit formats use the format-aware overload below.
         virtual nvrhi::InputLayoutHandle CreateInputLayout(nvrhi::IShader* vertexShader, const CreateParameters& params);
+        // Override this overload to customize layouts for all texture coordinate formats.
+        virtual nvrhi::InputLayoutHandle CreateInputLayout(nvrhi::IShader* vertexShader, const CreateParameters& params, engine::TexCoordFormat texCoordFormat);
         virtual nvrhi::BindingLayoutHandle CreateInputBindingLayout();
         virtual nvrhi::BindingSetHandle CreateInputBindingSet(const engine::BufferGroup* bufferGroup);
         virtual void CreateViewBindings(nvrhi::BindingLayoutHandle& layout, nvrhi::BindingSetHandle& set, const CreateParameters& params);
@@ -141,5 +164,4 @@ namespace donut::render
         void SetupInputBuffers(GeometryPassContext& context, const engine::BufferGroup* buffers, nvrhi::GraphicsState& state) override;
         void SetPushConstants(GeometryPassContext& context, nvrhi::ICommandList* commandList, nvrhi::GraphicsState& state, nvrhi::DrawArguments& args) override;
     };
-
 }

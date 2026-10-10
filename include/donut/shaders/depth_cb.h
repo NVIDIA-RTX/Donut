@@ -48,6 +48,11 @@ struct DepthPushConstants
     uint        startVertexLocation;
     uint        positionOffset;
     uint        texCoordOffset;
+    uint        texCoordFormat;
+    uint        padding0;
+    uint        padding1;
+    uint        padding2;
+    float4      texCoordScaleBias;
 };
 
 #endif // DEPTH_CB_H

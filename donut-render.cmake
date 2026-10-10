@@ -23,6 +23,7 @@
 file(GLOB donut_render_src
     LIST_DIRECTORIES false
     include/donut/render/*.h
+    src/render/*.h
     src/render/*.cpp
 )
 

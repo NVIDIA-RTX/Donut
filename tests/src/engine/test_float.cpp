@@ -548,7 +548,9 @@ std::unique_ptr<donut::app::DeviceManager> InitializeGraphicsDevice(nvrhi::Graph
 #endif
 
     DeviceCreationParameters deviceParams;
+#if DONUT_WITH_VULKAN
     deviceParams.requiredVulkanDeviceExtensions.push_back(VK_NV_COOPERATIVE_VECTOR_EXTENSION_NAME);
+#endif
     if (!deviceManager->CreateHeadlessDevice(deviceParams))
     {
         fprintf(stderr, "Failed to create a %s device, skipping GPU tests.\n",

@@ -43,9 +43,13 @@ struct GeometryData
     uint curveRadiusOffset;
 
     uint materialIndex;
-    uint pad0;
+    uint texCoordFormat; // 0 = float2, 1 = packed IEEE FP16 pair, 2 = UNORM16 pair; applies to both UV sets.
     uint pad1;
     uint pad2;
+
+    // Original UV = normalized UV * scaleBias.xy + scaleBias.zw (UNORM16 only).
+    float4 texCoord1ScaleBias;
+    float4 texCoord2ScaleBias;
 };
 
 static const uint InstanceFlags_CurveDisjointOrthogonalTriangleStrips = 0x00000001u;
@@ -71,18 +75,69 @@ struct InstanceData
 
 #ifndef __cplusplus
 
+#include "packing.hlsli"
+
 static const uint c_SizeOfTriangleIndices = 12;
 static const uint c_SizeOfPosition = 12;
+// Preserve the FP32 stride name for existing applications. Use GetTexCoordStride for format-dependent access.
 static const uint c_SizeOfTexcoord = 8;
+static const uint c_SizeOfTexcoord16 = 4;
 static const uint c_SizeOfNormal = 4;
 static const uint c_SizeOfJointIndices = 8;
 static const uint c_SizeOfJointWeights = 16;
 static const uint c_SizeOfCurveRadius = 4;
 
-// Define the sizes of these structures because FXC doesn't support sizeof(x)
-static const uint c_SizeOfGeometryData = 4*16;
+// Byte strides of the shared structures used by raw-buffer loaders.
+static const uint c_SizeOfGeometryData = 6*16;
 static const uint c_SizeOfInstanceData = 7*16;
 static const uint c_SizeOfMaterialConstants = 13*16;
+
+static const uint c_TexCoordFormat_Float32 = 0;
+static const uint c_TexCoordFormat_Float16 = 1;
+static const uint c_TexCoordFormat_Unorm16 = 2;
+
+uint GetTexCoordStride(uint format)
+{
+    return format == c_TexCoordFormat_Float16 || format == c_TexCoordFormat_Unorm16
+        ? c_SizeOfTexcoord16 : c_SizeOfTexcoord;
+}
+
+// Decode the storage format into FP32. UNORM16 returns normalized coordinates;
+// use the scale/bias overload below to recover the original asset coordinates.
+float2 LoadTexCoord(ByteAddressBuffer buffer, uint baseOffset, uint vertexIndex, uint format)
+{
+    uint offset = baseOffset + vertexIndex * GetTexCoordStride(format);
+    if (format == c_TexCoordFormat_Float16)
+        return Unpack_R16G16_FLOAT(buffer.Load(offset));
+    if (format == c_TexCoordFormat_Unorm16)
+        return Unpack_R16G16_UFLOAT(buffer.Load(offset));
+
+    return asfloat(buffer.Load2(offset));
+}
+
+// Also used for UNORM16 attributes converted to [0, 1] by the input assembler.
+// Floating-point IA variants disable decoding and discard its push-constant inputs.
+template<bool enableDecode = true>
+float2 DecodeTexCoord(float2 texCoord, uint format, float4 scaleBias)
+{
+    if (!enableDecode)
+        return texCoord;
+
+    return format == c_TexCoordFormat_Unorm16 ? texCoord * scaleBias.xy + scaleBias.zw : texCoord;
+}
+
+float2 LoadTexCoord(ByteAddressBuffer buffer, uint baseOffset, uint vertexIndex, uint format, float4 scaleBias)
+{
+    return DecodeTexCoord(LoadTexCoord(buffer, baseOffset, vertexIndex, format), format, scaleBias);
+}
+
+// Geometry offsets already include the mesh/primitive's base vertex offset.
+float2 LoadGeometryTexCoord(ByteAddressBuffer buffer, GeometryData geometry, uint vertexIndex, uint texCoordSet)
+{
+    return texCoordSet == 0
+        ? LoadTexCoord(buffer, geometry.texCoord1Offset, vertexIndex, geometry.texCoordFormat, geometry.texCoord1ScaleBias)
+        : LoadTexCoord(buffer, geometry.texCoord2Offset, vertexIndex, geometry.texCoordFormat, geometry.texCoord2ScaleBias);
+}
 
 GeometryData LoadGeometryData(ByteAddressBuffer buffer, uint offset)
 {
@@ -105,9 +160,11 @@ GeometryData LoadGeometryData(ByteAddressBuffer buffer, uint offset)
     ret.tangentOffset = c.z;
     ret.curveRadiusOffset = c.w;
     ret.materialIndex = d.x;
-    ret.pad0 = d.y;
+    ret.texCoordFormat = d.y;
     ret.pad1 = d.z;
     ret.pad2 = d.w;
+    ret.texCoord1ScaleBias = asfloat(buffer.Load4(offset + 16 * 4));
+    ret.texCoord2ScaleBias = asfloat(buffer.Load4(offset + 16 * 5));
     return ret;
 }
 

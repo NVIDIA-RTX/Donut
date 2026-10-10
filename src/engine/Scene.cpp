@@ -39,9 +39,14 @@ this software is released into the Public Domain.
 #include <donut/engine/ThreadPool.h>
 #include <donut/core/json.h>
 #include <donut/core/log.h>
+#include <donut/core/math/float.h>
 #include <donut/core/string_utils.h>
 #include <nvrhi/common/misc.h>
 #include <json/json-forwards.h>
+#include <algorithm>
+#include <cmath>
+#include <limits>
+#include <unordered_map>
 
 #include "donut/engine/ShaderFactory.h"
 
@@ -125,6 +130,11 @@ Scene::Scene(
     }
 }
 
+void Scene::SetDefaultTexCoordFormat(TexCoordFormat format)
+{
+    m_GltfImporter = std::make_shared<GltfImporter>(m_fs, m_SceneTypeFactory, format);
+}
+
 bool Scene::Load(const std::filesystem::path& jsonFileName)
 {
     ThreadPool threadPool;
@@ -189,12 +199,14 @@ void Scene::LoadModelAsync(
     const std::filesystem::path& fileName,
     ThreadPool* threadPool)
 {   
+    // Retain the import settings for this model even if a later load changes the default.
+    const auto importer = m_GltfImporter;
     if (threadPool)
     {
-        threadPool->AddTask([this, index, threadPool, fileName]()
+        threadPool->AddTask([this, index, threadPool, fileName, importer]()
         {
             SceneImportResult result;
-            m_GltfImporter->Load(fileName, *m_TextureCache, g_LoadingStats, threadPool, result);
+            importer->Load(fileName, *m_TextureCache, g_LoadingStats, threadPool, result);
             ++g_LoadingStats.ObjectsLoaded;
             m_Models[index] = result;
         });
@@ -202,7 +214,7 @@ void Scene::LoadModelAsync(
     else
     {
         SceneImportResult result;
-        m_GltfImporter->Load(fileName, *m_TextureCache, g_LoadingStats, threadPool, result);
+        importer->Load(fileName, *m_TextureCache, g_LoadingStats, threadPool, result);
         ++g_LoadingStats.ObjectsLoaded;
         m_Models[index] = result;
     }
@@ -765,14 +777,15 @@ void Scene::UpdateSkinnedMeshes(nvrhi::ICommandList* commandList, uint32_t frame
         if (prototypeBuffers->hasAttribute(VertexAttribute::Tangent)) constants.flags |= SkinningFlag_Tangents;
         if (prototypeBuffers->hasAttribute(VertexAttribute::TexCoord1)) constants.flags |= SkinningFlag_TexCoord1;
         if (prototypeBuffers->hasAttribute(VertexAttribute::TexCoord2)) constants.flags |= SkinningFlag_TexCoord2;
+        if (prototypeBuffers->getTexCoordStride() == sizeof(uint32_t)) constants.flags |= SkinningFlag_TexCoords16Bit;
         if (!skinnedInstance->skinningInitialized) constants.flags |= SkinningFlag_FirstFrame;
         skinnedInstance->skinningInitialized = true;
 
         constants.inputPositionOffset = uint32_t(prototypeBuffers->getVertexBufferRange(VertexAttribute::Position).byteOffset + vertexOffset * sizeof(float3));
         constants.inputNormalOffset = uint32_t(prototypeBuffers->getVertexBufferRange(VertexAttribute::Normal).byteOffset + vertexOffset * sizeof(uint32_t));
         constants.inputTangentOffset = uint32_t(prototypeBuffers->getVertexBufferRange(VertexAttribute::Tangent).byteOffset + vertexOffset * sizeof(uint32_t));
-        constants.inputTexCoord1Offset = uint32_t(prototypeBuffers->getVertexBufferRange(VertexAttribute::TexCoord1).byteOffset + vertexOffset * sizeof(float2));
-        constants.inputTexCoord2Offset = uint32_t(prototypeBuffers->getVertexBufferRange(VertexAttribute::TexCoord2).byteOffset + vertexOffset * sizeof(float2));
+        constants.inputTexCoord1Offset = uint32_t(prototypeBuffers->getVertexBufferRange(VertexAttribute::TexCoord1).byteOffset + vertexOffset * prototypeBuffers->getTexCoordStride());
+        constants.inputTexCoord2Offset = uint32_t(prototypeBuffers->getVertexBufferRange(VertexAttribute::TexCoord2).byteOffset + vertexOffset * prototypeBuffers->getTexCoordStride());
         constants.inputJointIndexOffset = uint32_t(prototypeBuffers->getVertexBufferRange(VertexAttribute::JointIndices).byteOffset + vertexOffset * sizeof(uint2));
         constants.inputJointWeightOffset = uint32_t(prototypeBuffers->getVertexBufferRange(VertexAttribute::JointWeights).byteOffset + vertexOffset * sizeof(float4));
         constants.outputPositionOffset = uint32_t(skinnedBuffers->getVertexBufferRange(VertexAttribute::Position).byteOffset);
@@ -823,8 +836,172 @@ inline void AppendBufferRange(nvrhi::BufferRange& range, size_t size, uint64_t& 
     currentBufferSize += range.byteSize;
 }
 
+static bool CanUseFloat16TexCoords(const std::vector<float2>& texcoords)
+{
+    for (const float2& uv : texcoords)
+    {
+        if (!std::isfinite(uv.x) || !std::isfinite(uv.y) || std::abs(uv.x) > 65504.f || std::abs(uv.y) > 65504.f)
+            return false;
+    }
+
+    return true;
+}
+
+static bool ComputeTexCoordDecode(const std::vector<float2>& texcoords, const TexCoordDecodeRange& range,
+    TexCoordDecode& decode)
+{
+    const size_t first = range.vertexOffset;
+    const size_t end = std::min(texcoords.size(), size_t(range.vertexOffset) + range.numVertices);
+    if (first >= end)
+        return true;
+
+    float2 minimum = texcoords[first];
+    float2 maximum = minimum;
+    for (size_t vertex = first; vertex < end; ++vertex)
+    {
+        const float2 uv = texcoords[vertex];
+        if (!std::isfinite(uv.x) || !std::isfinite(uv.y))
+            return false;
+        minimum = dm::min(minimum, uv);
+        maximum = dm::max(maximum, uv);
+    }
+
+    for (int axis = 0; axis < 2; ++axis)
+    {
+        // Subtract in double: finite FP32 endpoints can have a range that overflows FP32.
+        const double span = double(maximum[axis]) - double(minimum[axis]);
+        if (span > double(std::numeric_limits<float>::max()))
+            return false;
+
+        decode.scale[axis] = float(span);
+        decode.offset[axis] = minimum[axis];
+        // Validate the actual stored scale as its rounding can overflow an otherwise finite endpoint.
+        const double decodedMaximum = double(decode.scale[axis]) + double(decode.offset[axis]);
+        if (decodedMaximum > double(std::numeric_limits<float>::max()))
+            return false;
+    }
+
+    return true;
+}
+
+static bool PrepareUnorm16TexCoords(BufferGroup& buffers, std::vector<TexCoordDecodeRange> meshRanges)
+{
+    buffers.texCoordDecodeRanges.clear();
+    const size_t vertexCount = std::max(buffers.texcoord1Data.size(), buffers.texcoord2Data.size());
+    if (vertexCount == 0)
+        return true;
+    if (vertexCount > std::numeric_limits<uint32_t>::max())
+        return false;
+
+    std::sort(meshRanges.begin(), meshRanges.end(), [](const TexCoordDecodeRange& a, const TexCoordDecodeRange& b)
+        { return a.vertexOffset < b.vertexOffset; });
+
+    std::vector<TexCoordDecodeRange> mergedRanges;
+    for (auto range : meshRanges)
+    {
+        if (range.vertexOffset >= vertexCount || range.numVertices == 0)
+            continue;
+        const uint32_t end = uint32_t(std::min(uint64_t(vertexCount), uint64_t(range.vertexOffset) + range.numVertices));
+        range.numVertices = end - range.vertexOffset;
+        if (!mergedRanges.empty()
+            && range.vertexOffset < mergedRanges.back().vertexOffset + mergedRanges.back().numVertices)
+        {
+            // One packed vertex cannot use different decode transforms in overlapping meshes.
+            auto& previous = mergedRanges.back();
+            previous.numVertices = std::max(previous.vertexOffset + previous.numVertices, end) - previous.vertexOffset;
+        }
+        else
+            mergedRanges.push_back(range);
+    }
+
+    uint32_t nextVertex = 0;
+    for (const auto& range : mergedRanges)
+    {
+        if (range.vertexOffset > nextVertex)
+            buffers.texCoordDecodeRanges.push_back({ nextVertex, range.vertexOffset - nextVertex });
+        buffers.texCoordDecodeRanges.push_back(range);
+        nextVertex = range.vertexOffset + range.numVertices;
+    }
+    if (nextVertex < vertexCount)
+        buffers.texCoordDecodeRanges.push_back({ nextVertex, uint32_t(vertexCount) - nextVertex });
+
+    for (auto& range : buffers.texCoordDecodeRanges)
+    {
+        if (!ComputeTexCoordDecode(buffers.texcoord1Data, range, range.texCoord1)
+            || !ComputeTexCoordDecode(buffers.texcoord2Data, range, range.texCoord2))
+        {
+            buffers.texCoordDecodeRanges.clear();
+            return false;
+        }
+    }
+
+    return true;
+}
+
+static uint16_t PackUnorm16TexCoord(float value, float scale, float offset)
+{
+    if (scale == 0.f)
+        return 0;
+    // Avoid FP32 intermediate rounding that can cross a UNORM16 quantization midpoint.
+    const double normalized = (double(value) - double(offset)) / double(scale);
+    return uint16_t(std::clamp(normalized, 0.0, 1.0) * 65535.0 + 0.5);
+}
+
+static void WriteTexCoords(nvrhi::ICommandList* commandList, const BufferGroup& buffers,
+    VertexAttribute attribute, std::vector<float2>& texcoords)
+{
+    if (texcoords.empty())
+        return;
+
+    const auto& range = buffers.getVertexBufferRange(attribute);
+    if (buffers.texCoordFormat == TexCoordFormat::Float16)
+    {
+        std::vector<float16_t2> packed(texcoords.size());
+        for (size_t index = 0; index < texcoords.size(); ++index)
+            packed[index] = Float32ToFloat16x2(texcoords[index]);
+
+        commandList->writeBuffer(buffers.vertexBuffer, packed.data(), packed.size() * sizeof(float16_t2), range.byteOffset);
+    }
+    else if (buffers.texCoordFormat == TexCoordFormat::Unorm16)
+    {
+        std::vector<uint32_t> packed(texcoords.size());
+        for (const auto& decodeRange : buffers.texCoordDecodeRanges)
+        {
+            const auto& decode = attribute == VertexAttribute::TexCoord1 ? decodeRange.texCoord1 : decodeRange.texCoord2;
+            const size_t end = std::min(texcoords.size(), size_t(decodeRange.vertexOffset) + decodeRange.numVertices);
+            for (size_t vertex = decodeRange.vertexOffset; vertex < end; ++vertex)
+            {
+                const uint32_t u = PackUnorm16TexCoord(texcoords[vertex].x, decode.scale.x, decode.offset.x);
+                const uint32_t v = PackUnorm16TexCoord(texcoords[vertex].y, decode.scale.y, decode.offset.y);
+                packed[vertex] = u | (v << 16);
+            }
+        }
+        commandList->writeBuffer(buffers.vertexBuffer, packed.data(), packed.size() * sizeof(uint32_t), range.byteOffset);
+    }
+    else
+    {
+        commandList->writeBuffer(buffers.vertexBuffer, texcoords.data(), texcoords.size() * sizeof(float2), range.byteOffset);
+    }
+
+    std::vector<float2>().swap(texcoords);
+}
+
 void Scene::CreateMeshBuffers(nvrhi::ICommandList* commandList)
 {
+    // Gather all meshes before uploading a shared buffer so iteration order cannot affect its encoding.
+    std::unordered_map<BufferGroup*, std::vector<TexCoordDecodeRange>> texCoordMeshRanges;
+    for (const auto& mesh : m_SceneGraph->GetMeshes())
+    {
+        if (!mesh->buffers || mesh->buffers->vertexBuffer || mesh->buffers->texCoordFormat != TexCoordFormat::Unorm16)
+            continue;
+
+        uint64_t numVertices = mesh->totalVertices;
+        for (const auto& geometry : mesh->geometries)
+            numVertices = std::max(numVertices, uint64_t(geometry->vertexOffsetInMesh) + geometry->numVertices);
+        numVertices = std::min(numVertices, uint64_t(std::numeric_limits<uint32_t>::max()) - mesh->vertexOffset);
+        texCoordMeshRanges[mesh->buffers.get()].push_back({ mesh->vertexOffset, uint32_t(numVertices) });
+    }
+
     for (const auto& mesh : m_SceneGraph->GetMeshes())
     {
         auto buffers = mesh->buffers;
@@ -867,6 +1044,22 @@ void Scene::CreateMeshBuffers(nvrhi::ICommandList* commandList)
 
         if (!buffers->vertexBuffer)
         {
+            // Both UV streams share one format, including when either stream requires an FP32 fallback.
+            if (buffers->texCoordFormat == TexCoordFormat::Float16
+                && (!CanUseFloat16TexCoords(buffers->texcoord1Data) || !CanUseFloat16TexCoords(buffers->texcoord2Data)))
+            {
+                log::warning("Mesh '%s' has texture coordinates outside the finite Float16 range; using Float32 for its buffer group.",
+                    mesh->name.c_str());
+                buffers->texCoordFormat = TexCoordFormat::Float32;
+            }
+            else if (buffers->texCoordFormat == TexCoordFormat::Unorm16
+                && !PrepareUnorm16TexCoords(*buffers, std::move(texCoordMeshRanges[buffers.get()])))
+            {
+                log::warning("Mesh '%s' has texture coordinates that cannot use finite UNORM16 decode bounds; using Float32 for its buffer group.",
+                    mesh->name.c_str());
+                buffers->texCoordFormat = TexCoordFormat::Float32;
+            }
+
             nvrhi::BufferDesc bufferDesc;
             bufferDesc.isVertexBuffer = true;
             bufferDesc.byteSize = 0;
@@ -896,13 +1089,13 @@ void Scene::CreateMeshBuffers(nvrhi::ICommandList* commandList)
             if (!buffers->texcoord1Data.empty())
             {
                 AppendBufferRange(buffers->getVertexBufferRange(VertexAttribute::TexCoord1),
-                    buffers->texcoord1Data.size() * sizeof(buffers->texcoord1Data[0]), bufferDesc.byteSize);
+                    buffers->texcoord1Data.size() * buffers->getTexCoordStride(), bufferDesc.byteSize);
             }
 
             if (!buffers->texcoord2Data.empty())
             {
                 AppendBufferRange(buffers->getVertexBufferRange(VertexAttribute::TexCoord2),
-                    buffers->texcoord2Data.size() * sizeof(buffers->texcoord2Data[0]), bufferDesc.byteSize);
+                    buffers->texcoord2Data.size() * buffers->getTexCoordStride(), bufferDesc.byteSize);
             }
 
             if (!buffers->weightData.empty())
@@ -958,19 +1151,8 @@ void Scene::CreateMeshBuffers(nvrhi::ICommandList* commandList)
                 std::vector<uint32_t>().swap(buffers->tangentData);
             }
 
-            if (!buffers->texcoord1Data.empty())
-            {
-                const auto& range = buffers->getVertexBufferRange(VertexAttribute::TexCoord1);
-                commandList->writeBuffer(buffers->vertexBuffer, buffers->texcoord1Data.data(), range.byteSize, range.byteOffset);
-                std::vector<float2>().swap(buffers->texcoord1Data);
-            }
-
-            if (!buffers->texcoord2Data.empty())
-            {
-                const auto& range = buffers->getVertexBufferRange(VertexAttribute::TexCoord2);
-                commandList->writeBuffer(buffers->vertexBuffer, buffers->texcoord2Data.data(), range.byteSize, range.byteOffset);
-                std::vector<float2>().swap(buffers->texcoord2Data);
-            }
+            WriteTexCoords(commandList, *buffers, VertexAttribute::TexCoord1, buffers->texcoord1Data);
+            WriteTexCoords(commandList, *buffers, VertexAttribute::TexCoord2, buffers->texcoord2Data);
 
             if (!buffers->weightData.empty())
             {
@@ -1018,6 +1200,19 @@ void Scene::CreateMeshBuffers(nvrhi::ICommandList* commandList)
 
             const auto& prototypeBuffers = skinnedInstance->GetPrototypeMesh()->buffers;
             const auto& skinnedBuffers = skinnedMesh->buffers;
+            skinnedBuffers->texCoordFormat = prototypeBuffers->texCoordFormat;
+            const uint32_t prototypeVertexOffset = skinnedInstance->GetPrototypeMesh()->vertexOffset;
+            for (auto range : prototypeBuffers->texCoordDecodeRanges)
+            {
+                const uint64_t first = std::max(uint64_t(range.vertexOffset), uint64_t(prototypeVertexOffset));
+                const uint64_t end = std::min(uint64_t(range.vertexOffset) + range.numVertices,
+                    uint64_t(prototypeVertexOffset) + totalVertices);
+                if (first >= end)
+                    continue;
+                range.vertexOffset = uint32_t(first - prototypeVertexOffset);
+                range.numVertices = uint32_t(end - first);
+                skinnedBuffers->texCoordDecodeRanges.push_back(range);
+            }
 
             size_t skinnedVertexBufferSize = 0;
             assert(prototypeBuffers->hasAttribute(VertexAttribute::Position));
@@ -1043,13 +1238,13 @@ void Scene::CreateMeshBuffers(nvrhi::ICommandList* commandList)
             if (prototypeBuffers->hasAttribute(VertexAttribute::TexCoord1))
             {
                 AppendBufferRange(skinnedBuffers->getVertexBufferRange(VertexAttribute::TexCoord1),
-                    totalVertices * sizeof(float2), skinnedVertexBufferSize);
+                    totalVertices * skinnedBuffers->getTexCoordStride(), skinnedVertexBufferSize);
             }
 
             if (prototypeBuffers->hasAttribute(VertexAttribute::TexCoord2))
             {
                 AppendBufferRange(skinnedBuffers->getVertexBufferRange(VertexAttribute::TexCoord2),
-                    totalVertices * sizeof(float2), skinnedVertexBufferSize);
+                    totalVertices * skinnedBuffers->getTexCoordStride(), skinnedVertexBufferSize);
             }
 
             nvrhi::BufferDesc bufferDesc;
@@ -1097,6 +1292,18 @@ void Scene::CreateMeshBuffers(nvrhi::ICommandList* commandList)
             };
 
             skinnedInstance->skinningBindingSet = m_Device->createBindingSet(setDesc, m_SkinningBindingLayout);
+        }
+    }
+
+    // Resolve after all shared buffers and remapped skinned ranges are finalized. Hints contain
+    // indices rather than pointers or copied decode values, and readers always validate them.
+    for (const auto& mesh : m_SceneGraph->GetMeshes())
+    {
+        for (const auto& geometry : mesh->geometries)
+        {
+            geometry->texCoordDecodeRangeIndex = mesh->buffers && mesh->buffers->texCoordFormat == TexCoordFormat::Unorm16
+                ? mesh->buffers->getTexCoordDecodeRangeIndex(mesh->vertexOffset + geometry->vertexOffsetInMesh)
+                : ~0u;
         }
     }
 }
@@ -1197,14 +1404,18 @@ void Scene::UpdateGeometry(const std::shared_ptr<MeshInfo>& mesh)
         gdata.indexBufferIndex = mesh->buffers->indexBufferDescriptor ? mesh->buffers->indexBufferDescriptor->Get() : -1;
         gdata.indexOffset = indexOffset * sizeof(uint32_t);
         gdata.vertexBufferIndex = mesh->buffers->vertexBufferDescriptor ? mesh->buffers->vertexBufferDescriptor->Get() : -1;
+        gdata.texCoordFormat = uint32_t(mesh->buffers->texCoordFormat);
+        const auto& texCoordDecode = mesh->buffers->getTexCoordDecodeRange(vertexOffset, geometry->texCoordDecodeRangeIndex);
+        gdata.texCoord1ScaleBias = float4(texCoordDecode.texCoord1.scale, texCoordDecode.texCoord1.offset);
+        gdata.texCoord2ScaleBias = float4(texCoordDecode.texCoord2.scale, texCoordDecode.texCoord2.offset);
         gdata.positionOffset = mesh->buffers->hasAttribute(VertexAttribute::Position)
             ? uint32_t(vertexOffset * sizeof(float3) + mesh->buffers->getVertexBufferRange(VertexAttribute::Position).byteOffset) : ~0u;
         gdata.prevPositionOffset = mesh->buffers->hasAttribute(VertexAttribute::PrevPosition)
             ? uint32_t(vertexOffset * sizeof(float3) + mesh->buffers->getVertexBufferRange(VertexAttribute::PrevPosition).byteOffset) : ~0u;
         gdata.texCoord1Offset = mesh->buffers->hasAttribute(VertexAttribute::TexCoord1)
-            ? uint32_t(vertexOffset * sizeof(float2) + mesh->buffers->getVertexBufferRange(VertexAttribute::TexCoord1).byteOffset) : ~0u;
+            ? uint32_t(vertexOffset * mesh->buffers->getTexCoordStride() + mesh->buffers->getVertexBufferRange(VertexAttribute::TexCoord1).byteOffset) : ~0u;
         gdata.texCoord2Offset = mesh->buffers->hasAttribute(VertexAttribute::TexCoord2)
-            ? uint32_t(vertexOffset * sizeof(float2) + mesh->buffers->getVertexBufferRange(VertexAttribute::TexCoord2).byteOffset) : ~0u;
+            ? uint32_t(vertexOffset * mesh->buffers->getTexCoordStride() + mesh->buffers->getVertexBufferRange(VertexAttribute::TexCoord2).byteOffset) : ~0u;
         gdata.normalOffset = mesh->buffers->hasAttribute(VertexAttribute::Normal)
             ? uint32_t(vertexOffset * sizeof(uint32_t) + mesh->buffers->getVertexBufferRange(VertexAttribute::Normal).byteOffset) : ~0u;
         gdata.tangentOffset = mesh->buffers->hasAttribute(VertexAttribute::Tangent)

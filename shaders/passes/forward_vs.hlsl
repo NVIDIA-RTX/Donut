@@ -31,6 +31,14 @@
 DECLARE_CBUFFER(ForwardShadingViewConstants, g_ForwardView, FORWARD_BINDING_VIEW_CONSTANTS, FORWARD_SPACE_VIEW);
 
 // Version of the vertex shader that uses the hardware Input Assembler to read vertex attributes and transforms.
+DECLARE_PUSH_CONSTANTS(ForwardPushConstants, g_Push, FORWARD_BINDING_PUSH_CONSTANTS, FORWARD_SPACE_INPUT);
+
+// Selects the UV decoder template specialization for IA inputs.
+// Keep the decoding default when compiling without an IA permutation define.
+#ifndef DECODE_TEXCOORD
+#define DECODE_TEXCOORD 1
+#endif
+
 void input_assembler(
 	in SceneVertex i_vtx,
     in float4 i_instanceMatrix0 : TRANSFORM0,
@@ -50,6 +58,8 @@ void input_assembler(
 
     float4 worldPos = float4(o_vtx.pos, 1.0);
     o_position = mul(worldPos, g_ForwardView.view.matWorldToClip);
+
+    o_vtx.texCoord = DecodeTexCoord<DECODE_TEXCOORD != 0>(o_vtx.texCoord, g_Push.texCoordFormat, g_Push.texCoordScaleBias);
 }
 
 
@@ -63,7 +73,6 @@ StructuredBuffer<InstanceData> t_Instances  : REGISTER_SRV(FORWARD_BINDING_INSTA
 #endif
 ByteAddressBuffer t_Vertices                : REGISTER_SRV(FORWARD_BINDING_VERTEX_BUFFER, FORWARD_SPACE_INPUT);
 
-DECLARE_PUSH_CONSTANTS(ForwardPushConstants, g_Push, FORWARD_BINDING_PUSH_CONSTANTS, FORWARD_SPACE_INPUT);
 
 // Version of the vertex shader that uses buffer loads to read vertex attributes and transforms.
 void buffer_loads(
@@ -83,7 +92,7 @@ void buffer_loads(
 #endif
 
     float3 pos = asfloat(t_Vertices.Load3(g_Push.positionOffset + i_vertex * c_SizeOfPosition));
-    float2 texCoord = asfloat(t_Vertices.Load2(g_Push.texCoordOffset + i_vertex * c_SizeOfTexcoord));
+    float2 texCoord = LoadTexCoord(t_Vertices, g_Push.texCoordOffset, i_vertex, g_Push.texCoordFormat, g_Push.texCoordScaleBias);
     uint packedNormal = t_Vertices.Load(g_Push.normalOffset + i_vertex * c_SizeOfNormal);
     uint packedTangent = t_Vertices.Load(g_Push.tangentOffset + i_vertex * c_SizeOfNormal);
     float3 normal = Unpack_RGB8_SNORM(packedNormal);

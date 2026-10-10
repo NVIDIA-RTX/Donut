@@ -30,6 +30,14 @@
 
 DECLARE_CBUFFER(GBufferFillConstants, c_GBuffer, GBUFFER_BINDING_VIEW_CONSTANTS, GBUFFER_SPACE_VIEW);
 
+DECLARE_PUSH_CONSTANTS(GBufferPushConstants, g_Push, GBUFFER_BINDING_PUSH_CONSTANTS, GBUFFER_SPACE_INPUT);
+
+// Selects the UV decoder template specialization for IA inputs.
+// Keep the decoding default when compiling without an IA permutation define.
+#ifndef DECODE_TEXCOORD
+#define DECODE_TEXCOORD 1
+#endif
+
 void input_assembler(
     in SceneVertex i_vtx,
     in float4 i_instanceMatrix0 : TRANSFORM0,
@@ -64,6 +72,8 @@ void input_assembler(
     float4 viewPos = mul(worldPos, c_GBuffer.view.matWorldToView);
     o_position = mul(viewPos, c_GBuffer.view.matViewToClip);
     o_instance = i_instance;
+
+    o_vtx.texCoord = DecodeTexCoord<DECODE_TEXCOORD != 0>(o_vtx.texCoord, g_Push.texCoordFormat, g_Push.texCoordScaleBias);
 }
 
 // Use a raw buffer on DX11 to avoid adding the StructuredBuffer flag to the instance buffer.
@@ -76,7 +86,6 @@ StructuredBuffer<InstanceData> t_Instances : REGISTER_SRV(GBUFFER_BINDING_INSTAN
 #endif
 ByteAddressBuffer t_Vertices : REGISTER_SRV(GBUFFER_BINDING_VERTEX_BUFFER, GBUFFER_SPACE_INPUT);
 
-DECLARE_PUSH_CONSTANTS(GBufferPushConstants, g_Push, GBUFFER_BINDING_PUSH_CONSTANTS, GBUFFER_SPACE_INPUT);
 
 // Version of the vertex shader that uses buffer loads to read vertex attributes and transforms.
 void buffer_loads(
@@ -100,7 +109,7 @@ void buffer_loads(
 
     float3 pos = asfloat(t_Vertices.Load3(g_Push.positionOffset + i_vertex * c_SizeOfPosition));
     float3 prevPos = asfloat(t_Vertices.Load3(g_Push.prevPositionOffset + i_vertex * c_SizeOfPosition));
-    float2 texCoord = asfloat(t_Vertices.Load2(g_Push.texCoordOffset + i_vertex * c_SizeOfTexcoord));
+    float2 texCoord = LoadTexCoord(t_Vertices, g_Push.texCoordOffset, i_vertex, g_Push.texCoordFormat, g_Push.texCoordScaleBias);
     uint packedNormal = t_Vertices.Load(g_Push.normalOffset + i_vertex * c_SizeOfNormal);
     uint packedTangent = t_Vertices.Load(g_Push.tangentOffset + i_vertex * c_SizeOfNormal);
     float3 normal = Unpack_RGB8_SNORM(packedNormal);

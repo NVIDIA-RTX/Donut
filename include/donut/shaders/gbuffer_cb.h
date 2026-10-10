@@ -59,6 +59,8 @@ struct GBufferPushConstants
     uint        texCoordOffset;
     uint        normalOffset;
     uint        tangentOffset;
+    uint        texCoordFormat;
+    float4      texCoordScaleBias;
 };
 
 #endif // GBUFFER_CB_H

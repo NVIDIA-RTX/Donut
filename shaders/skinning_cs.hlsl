@@ -34,6 +34,21 @@ RWByteAddressBuffer u_VertexBuffer : register(u0);
 
 DECLARE_PUSH_CONSTANTS(SkinningConstants, g_Const, 0, 0);
 
+// Skinning leaves UVs unchanged, preserving FP32, FP16, or UNORM16 stored bits.
+void CopyTexCoord(uint vertexIndex, uint inputOffset, uint outputOffset)
+{
+    if (g_Const.flags & SkinningFlag_TexCoords16Bit)
+    {
+        uint vertexByteOffset = vertexIndex * c_SizeOfTexcoord16;
+        u_VertexBuffer.Store(outputOffset + vertexByteOffset, t_VertexBuffer.Load(inputOffset + vertexByteOffset));
+    }
+    else
+    {
+        uint vertexByteOffset = vertexIndex * c_SizeOfTexcoord;
+        u_VertexBuffer.Store2(outputOffset + vertexByteOffset, t_VertexBuffer.Load2(inputOffset + vertexByteOffset));
+    }
+}
+
 [numthreads(256, 1, 1)]
 void main(in uint i_globalIdx : SV_DispatchThreadID)
 {
@@ -43,20 +58,12 @@ void main(in uint i_globalIdx : SV_DispatchThreadID)
 	float3 position = asfloat(t_VertexBuffer.Load3(i_globalIdx * c_SizeOfPosition + g_Const.inputPositionOffset));
 	float4 normal = 0;
 	float4 tangent = 0;
-	float2 texCoord1 = 0;
-	float2 texCoord2 = 0;
 
 	if (g_Const.flags & SkinningFlag_Normals)
 		normal = Unpack_RGBA8_SNORM(t_VertexBuffer.Load(i_globalIdx * c_SizeOfNormal + g_Const.inputNormalOffset));
 
 	if (g_Const.flags & SkinningFlag_Tangents)
 		tangent = Unpack_RGBA8_SNORM(t_VertexBuffer.Load(i_globalIdx * c_SizeOfNormal + g_Const.inputTangentOffset));
-
-	if (g_Const.flags & SkinningFlag_TexCoord1)
-		texCoord1 = asfloat(t_VertexBuffer.Load2(i_globalIdx * c_SizeOfTexcoord + g_Const.inputTexCoord1Offset));
-
-	if (g_Const.flags & SkinningFlag_TexCoord2)
-		texCoord2 = asfloat(t_VertexBuffer.Load2(i_globalIdx * c_SizeOfTexcoord + g_Const.inputTexCoord2Offset));
 
 	uint2 jointIndicesPacked = t_VertexBuffer.Load2(i_globalIdx * c_SizeOfJointIndices + g_Const.inputJointIndexOffset);
 	uint4 jointIndices = uint4(
@@ -100,8 +107,8 @@ void main(in uint i_globalIdx : SV_DispatchThreadID)
 		u_VertexBuffer.Store(i_globalIdx * c_SizeOfNormal + g_Const.outputTangentOffset, Pack_RGBA8_SNORM(tangent));
 	
 	if (g_Const.flags & SkinningFlag_TexCoord1)
-		u_VertexBuffer.Store2(i_globalIdx * c_SizeOfTexcoord + g_Const.outputTexCoord1Offset, asuint(texCoord1));
+		CopyTexCoord(i_globalIdx, g_Const.inputTexCoord1Offset, g_Const.outputTexCoord1Offset);
 
 	if (g_Const.flags & SkinningFlag_TexCoord2)
-		u_VertexBuffer.Store2(i_globalIdx * c_SizeOfTexcoord + g_Const.outputTexCoord2Offset, asuint(texCoord2));
+		CopyTexCoord(i_globalIdx, g_Const.inputTexCoord2Offset, g_Const.outputTexCoord2Offset);
 }

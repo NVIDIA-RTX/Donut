@@ -89,6 +89,9 @@ struct ForwardPushConstants
     uint        texCoordOffset;
     uint        normalOffset;
     uint        tangentOffset;
+    uint        texCoordFormat;
+    uint        padding;
+    float4      texCoordScaleBias;
 };
 
 #endif // FORWARD_CB_H

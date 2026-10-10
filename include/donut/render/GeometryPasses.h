@@ -54,6 +54,16 @@ namespace donut::render
 
     class GeometryPassContext
     {
+    public:
+        // RenderView supplies the geometry of the pending (possibly instanced) draw.
+        // Direct pass callers may leave this null and use the general decode lookup.
+        const engine::MeshGeometry* geometry = nullptr;
+
+        // Only RenderView opts into caching: it controls all graphics-state changes
+        // and invalidates constants before each setGraphicsState. Direct pass calls
+        // remain uncached so an external state change cannot leave stale constants.
+        bool enablePushConstantCaching = false;
+        bool pushConstantsValid = false;
     };
     
     class IGeometryPass
