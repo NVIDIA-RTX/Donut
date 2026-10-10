@@ -20,8 +20,17 @@
 # DEALINGS IN THE SOFTWARE.
 
 set(dlss_sdk "${dlss_SOURCE_DIR}")
-set(dlss_platform_win "Windows_x86_64")
 set(dlss_platform_lin "Linux_x86_64")
+
+# The SDK ships per-architecture Windows binaries (310.9+ for Arm64). The x64 import libraries
+# live in an extra "x64" subdirectory, while the Arm64 ones sit directly in the platform directory.
+if (NVRHI_TARGET_ARCH STREQUAL "arm64")
+	set(dlss_platform_win "Windows_aarch64")
+	set(dlss_implib_dir_win "${dlss_sdk}/lib/${dlss_platform_win}")
+else()
+	set(dlss_platform_win "Windows_x86_64")
+	set(dlss_implib_dir_win "${dlss_sdk}/lib/${dlss_platform_win}/x64")
+endif()
 
 set(dlss_lib_release "nvsdk_ngx_s.lib")
 set(dlss_lib_debug "nvsdk_ngx_s_dbg.lib")
@@ -30,8 +39,8 @@ if (WIN32)
 	add_library(DLSS SHARED IMPORTED)
 
 	set_target_properties(DLSS PROPERTIES
-		IMPORTED_IMPLIB "${dlss_sdk}/lib/${dlss_platform_win}/x64/${dlss_lib_release}"
-		IMPORTED_IMPLIB_DEBUG "${dlss_sdk}/lib/${dlss_platform_win}/x64/${dlss_lib_debug}"
+		IMPORTED_IMPLIB "${dlss_implib_dir_win}/${dlss_lib_release}"
+		IMPORTED_IMPLIB_DEBUG "${dlss_implib_dir_win}/${dlss_lib_debug}"
 		IMPORTED_LOCATION "${dlss_sdk}/lib/${dlss_platform_win}/rel/nvngx_dlss.dll"
 		IMPORTED_LOCATION_DEBUG "${dlss_sdk}/lib/${dlss_platform_win}/dev/nvngx_dlss.dll"
 	)
@@ -80,8 +89,8 @@ if (WIN32)
 	add_library(DLSS_RR SHARED IMPORTED)
 
 	set_target_properties(DLSS_RR PROPERTIES
-		IMPORTED_IMPLIB "${dlss_sdk}/lib/${dlss_platform_win}/x64/${dlss_lib_release}"
-		IMPORTED_IMPLIB_DEBUG "${dlss_sdk}/lib/${dlss_platform_win}/x64/${dlss_lib_debug}"
+		IMPORTED_IMPLIB "${dlss_implib_dir_win}/${dlss_lib_release}"
+		IMPORTED_IMPLIB_DEBUG "${dlss_implib_dir_win}/${dlss_lib_debug}"
 		IMPORTED_LOCATION "${dlss_sdk}/lib/${dlss_platform_win}/rel/nvngx_dlssd.dll"
 		IMPORTED_LOCATION_DEBUG "${dlss_sdk}/lib/${dlss_platform_win}/dev/nvngx_dlssd.dll"
 	)

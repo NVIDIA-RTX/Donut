@@ -26,6 +26,10 @@ Optional (also included as git submodules but can be disabled through CMake vari
 * **NVRHI**, **ImGUI**, and **glfw** for rendering (`DONUT_WITH_NVRHI`)
 * **tinyexr** to read EXR images (`DONUT_WITH_TINYEXR`)
 
+Optional, downloaded at configure time:
+
+* **Streamline** for DLSS (`DONUT_WITH_STREAMLINE`). Version 2.14.1 is fetched by default, the x64 or ARM64 package matching the target architecture. Set `DONUT_STREAMLINE_FETCH_URL`/`DONUT_STREAMLINE_FETCH_SHA256` to use another release, or `DONUT_STREAMLINE_SEARCH_PATHS` for a pre-installed SDK.
+
 ## Examples
 
 Example projects that use Donut can be found in a separate repository: [Donut-Samples](https://github.com/NVIDIA-RTX/Donut-Samples).
@@ -74,6 +78,10 @@ Supported glTF extensions:
 In addition to glTF, Donut supports its own [JSON-based scene layout files](doc/SceneFile.md). Those files can load multiple glTF models and combine them into a larger scene graph, also add lights, cameras, animations, and apply animations to scene nodes imported from the models using their paths.
 
 GPU texture coordinates support optional FP16 and bounds-normalized UNORM16 storage alongside the default FP32 format. See [texture coordinate storage](doc/TextureCoordinates.md) for configuration and application integration.
+
+### Scene memory statistics
+
+For geometry buffer accounting, see [scene geometry memory statistics](doc/MemoryStats.md).
 
 ### Render passes
 

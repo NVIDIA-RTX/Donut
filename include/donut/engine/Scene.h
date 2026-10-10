@@ -22,6 +22,7 @@
 
 #pragma once
 
+#include <donut/engine/MemoryStats.h>
 #include <donut/engine/SceneGraph.h>
 #include <nvrhi/nvrhi.h>
 #include <vector>
@@ -149,6 +150,7 @@ namespace donut::engine
         [[nodiscard]] nvrhi::IBuffer* GetMaterialBuffer() const { return m_MaterialBuffer; }
         [[nodiscard]] nvrhi::IBuffer* GetGeometryBuffer() const { return m_GeometryBuffer; }
         [[nodiscard]] nvrhi::IBuffer* GetInstanceBuffer() const { return m_InstanceBuffer; }
+        [[nodiscard]] SceneGeometryMemoryStats getGeometryMemoryStats() const;
 
         // Can return nullptr if not yet created (by Scene::RefreshBuffers)
         GeometryData* GetGeometryData(const MeshGeometry& geometry) const;

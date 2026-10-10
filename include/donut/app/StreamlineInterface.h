@@ -21,8 +21,6 @@
 */
 #pragma once
 
-#if DONUT_WITH_STREAMLINE
-
 // Donut
 #include <donut/engine/View.h>
 #include <donut/core/math/math.h>
@@ -32,18 +30,24 @@ namespace donut::app
 {
 class DeviceManager;
 
+// Outside the class: GCC rejects a nested type's member initializers in a
+// default argument of the still-incomplete enclosing class (GCC bug 88165).
+struct StreamlineExtent
+{
+    uint32_t top = 0u;
+    uint32_t left = 0u;
+    uint32_t width = 0u;
+    uint32_t height = 0u;
+};
+
+// Declared on every platform so cross-platform code compiles where Streamline is
+// unsupported; an instance exists only via DeviceManager::GetStreamline() when enabled.
 class StreamlineInterface
 {
 public:
     static constexpr float kInvalidFloat = 3.40282346638528859811704183484516925440e38f;
     static constexpr uint32_t kInvalidUint = 0xffffffff;
-    struct Extent
-    {
-        uint32_t top = 0u;
-        uint32_t left = 0u;
-        uint32_t width = 0u;
-        uint32_t height = 0u;
-    };
+    using Extent = StreamlineExtent;
 
     // Set the current viewport which affects constants, options and tagging
     virtual void SetViewport(uint32_t viewportIndex) = 0;
@@ -403,4 +407,3 @@ public:
 
 
 } // namespace donut::app
-#endif
