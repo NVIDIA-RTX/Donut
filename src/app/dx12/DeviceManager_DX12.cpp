@@ -209,6 +209,11 @@ bool DeviceManager_DX12::CreateDevice()
             donut::log::warning("Cannot enable GPU-based validation, ID3D12Debug3 is not available.");
     }
     
+    // No-op unless NVRHI was built with NVRHI_D3D12_WITH_DXRCLUSTER; must happen before
+    // D3D12CreateDevice, since changing feature enablement removes all live devices.
+    nvrhi::d3d12::enableExperimentalFeatures(
+        m_DeviceParams.messageCallback ? m_DeviceParams.messageCallback : &DefaultMessageCallback::GetInstance());
+
     int adapterIndex = m_DeviceParams.adapterIndex;
 
 #if DONUT_WITH_STREAMLINE

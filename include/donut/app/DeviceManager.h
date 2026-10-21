@@ -58,7 +58,7 @@ freely, subject to the following restrictions:
 #endif
 
 #if DONUT_WITH_DX12
-#include <directx/d3d12.h>
+#include <nvrhi/d3d12.h> // picks the same d3d12.h as NVRHI, which differs with NVRHI_D3D12_WITH_DXRCLUSTER
 #endif
 
 #if DONUT_WITH_VULKAN

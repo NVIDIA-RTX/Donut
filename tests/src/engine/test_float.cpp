@@ -21,7 +21,7 @@
 */
 
 #if DONUT_WITH_DX12
-#include <directx/d3d12.h>
+#include <nvrhi/d3d12.h>
 extern "C"
 {
     _declspec(dllexport) extern const unsigned int D3D12SDKVersion = D3D12_PREVIEW_SDK_VERSION;
