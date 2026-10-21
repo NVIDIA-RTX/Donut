@@ -156,6 +156,12 @@ function(donut_compile_shaders)
         set(ignore_includes ${ignore_includes} --relaxedInclude "${include_file}")
     endforeach()
 
+    # DXIL for an NVRHI built with DXR clusters must use its cluster layouts; see cluster_args.hlsli.
+    set(dxil_defines "")
+    if (NVRHI_D3D12_WITH_DXRCLUSTER)
+        set(dxil_defines -D NVRHI_D3D12_WITH_DXRCLUSTER=1)
+    endif()
+
     if (params_DXIL AND DONUT_WITH_DX12)
         if (NOT EXISTS "${SHADERMAKE_DXC_PATH}")
             message(FATAL_ERROR "donut_compile_shaders: DXC not found -- please set SHADERMAKE_DXC_PATH to the full path to the DXC binary")
@@ -169,6 +175,7 @@ function(donut_compile_shaders)
            ${include_dirs}
            ${ignore_includes}
            -D TARGET_D3D12
+           ${dxil_defines}
            --compiler "${SHADERMAKE_DXC_PATH}"
            --shaderModel ${params_SHADER_MODEL}
            ${project_name_arg})
@@ -201,6 +208,7 @@ function(donut_compile_shaders)
            ${include_dirs}
            ${ignore_includes}
            -D TARGET_D3D12
+           ${dxil_defines}
            --compiler "${SHADERMAKE_SLANG_PATH}"
            --slang
            --shaderModel ${params_SHADER_MODEL}
