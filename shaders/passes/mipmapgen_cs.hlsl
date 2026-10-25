@@ -74,10 +74,13 @@ groupshared VALUE_TYPE s_ReductionData[GROUP_SIZE][GROUP_SIZE];
     uint2 globalIdx : SV_DispatchThreadID,
     uint2 threadIdx : SV_GroupThreadID)
 {
-    uint texWidth, texHeight; 
+    uint texWidth;
+    uint texHeight;
     t_input.GetDimensions(texWidth, texHeight);
+    const uint2 texSize = uint2(texWidth, texHeight);
+    const uint2 minSize = uint2(1, 1);
 
-    VALUE_TYPE value = t_input.mips[0][min(globalIdx.xy, uint2(texWidth-1, texHeight-1))];
+    VALUE_TYPE value = t_input.mips[0][min(globalIdx.xy, texSize-1)];
 
 #if MODE == MODE_MINMAX
     if (g_MipMapGen.dispatch==0)
@@ -100,19 +103,28 @@ groupshared VALUE_TYPE s_ReductionData[GROUP_SIZE][GROUP_SIZE];
 
         GroupMemoryBarrierWithGroupSync();
 
-        if (all(threadIdx.xy < outGroupSize))
+        uint2 inputSize = max(texSize >> (level-1), minSize);
+        uint2 outputSize = max(inputSize >> 1, minSize);
+        uint2 outputPos = groupIdx.xy * outGroupSize + threadIdx.xy;
+        if (all(threadIdx.xy < outGroupSize) && all(outputPos < outputSize))
         {
-            VALUE_TYPE a = s_ReductionData[threadIdx.y * 2 + 0][threadIdx.x * 2 + 0];
-            VALUE_TYPE b = s_ReductionData[threadIdx.y * 2 + 0][threadIdx.x * 2 + 1];
-            VALUE_TYPE c = s_ReductionData[threadIdx.y * 2 + 1][threadIdx.x * 2 + 0];
-            VALUE_TYPE d = s_ReductionData[threadIdx.y * 2 + 1][threadIdx.x * 2 + 1];
+            // Clamping changes an index only on an axis with inputSize == 1, so outputSize == 1.
+            // The output bounds then require groupIdx == 0 and threadIdx == 0 on that axis:
+            // source1 clamps 1 to 0 while source0 stays 0, repeating the sole valid texel at each fused mip level.
+            // Local and global coordinates therefore coincide where clamping occurs; for inputSize >= 2, neither index is clamped.
+            uint2 source0 = min(threadIdx.xy * 2, inputSize-1);
+            uint2 source1 = min(threadIdx.xy * 2 + 1, inputSize-1);
+            VALUE_TYPE a = s_ReductionData[source0.y][source0.x];
+            VALUE_TYPE b = s_ReductionData[source0.y][source1.x];
+            VALUE_TYPE c = s_ReductionData[source1.y][source0.x];
+            VALUE_TYPE d = s_ReductionData[source1.y][source1.x];
 
 #if MODE == MODE_COLOR || MODE == MODE_MINMAX
             value = reduce(a, b, c, d);      
 #else
             value = reduce(float4(a, b, c, d));
 #endif
-            u_output[level-1][groupIdx.xy * outGroupSize + threadIdx.xy] = value;
+            u_output[level-1][outputPos] = value;
         }
         
         GroupMemoryBarrierWithGroupSync();
