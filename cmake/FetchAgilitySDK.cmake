@@ -95,7 +95,7 @@ endif()
 #
 #
 
-# NVRHI's DXR clusters path is built against one preview SDK version (see nvrhi/d3d12.h).
+# NVRHI's DXR cluster path is built against one preview SDK version (see nvrhi/d3d12.h).
 # A preview package keeps each version in its own folder, so accept the package root too.
 # The resolved folder is a normal variable, so the cached path stays as the user set it.
 set(DONUT_DXRCLUSTER_AGILITY_SDK_VERSION 722)
@@ -191,12 +191,12 @@ if(NVRHI_D3D12_WITH_DXRCLUSTER AND NOT (DONUT_D3D_AGILITY_SDK_PREVIEW AND DONUT_
                         "Point it at the extracted preview package or its 1.${DONUT_DXRCLUSTER_AGILITY_SDK_VERSION} folder.")
 endif()
 
-# NVRHI compiles its DXR clusters path against these headers, so they must come from the SDK
+# NVRHI compiles its DXR cluster path against these headers, so they must come from the SDK
 # whose D3D12Core.dll the application ships. Only a value this script set is updated.
 if(NVRHI_D3D12_WITH_DXRCLUSTER)
     if(NOT NVRHI_D3D12_DXRCLUSTER_INCLUDE_DIR OR NVRHI_D3D12_DXRCLUSTER_INCLUDE_DIR STREQUAL _donut_dxrcluster_include_dir)
         set(NVRHI_D3D12_DXRCLUSTER_INCLUDE_DIR "${DONUT_D3D_AGILITY_SDK_INCLUDE_DIR}"
-            CACHE PATH "Include directory of the preview Agility SDK providing the DXR clusters headers" FORCE)
+            CACHE PATH "Include directory of the preview Agility SDK providing the DXR cluster headers" FORCE)
         set(_donut_dxrcluster_include_dir "${DONUT_D3D_AGILITY_SDK_INCLUDE_DIR}" CACHE INTERNAL "")
     elseif(NOT NVRHI_D3D12_DXRCLUSTER_INCLUDE_DIR STREQUAL DONUT_D3D_AGILITY_SDK_INCLUDE_DIR)
         message(FATAL_ERROR "NVRHI_D3D12_DXRCLUSTER_INCLUDE_DIR (${NVRHI_D3D12_DXRCLUSTER_INCLUDE_DIR}) does not match the Agility SDK in "

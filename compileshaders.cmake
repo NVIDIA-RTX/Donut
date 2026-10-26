@@ -156,7 +156,7 @@ function(donut_compile_shaders)
         set(ignore_includes ${ignore_includes} --relaxedInclude "${include_file}")
     endforeach()
 
-    # DXIL for an NVRHI built with DXR clusters must use its cluster layouts; see cluster_args.hlsli.
+    # Lets shader configs add the DXR cluster variants that cluster_args.hlsli describes.
     set(dxil_defines "")
     if (NVRHI_D3D12_WITH_DXRCLUSTER)
         set(dxil_defines -D NVRHI_D3D12_WITH_DXRCLUSTER=1)

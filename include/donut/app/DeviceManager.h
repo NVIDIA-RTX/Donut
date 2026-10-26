@@ -177,6 +177,9 @@ namespace donut::app
         uint32_t maxFramesInFlight = 2;
         bool enableNvrhiValidationLayer = false;
         bool enableRayTracingValidation = false;
+        // DX12 only: the cluster operation APIs the device may pick from (nvrhi::d3d12::DeviceDesc).
+        bool enableDxrClusters = true;
+        bool enableNvapiClusters = true;
         bool vsyncEnabled = false;
         bool enableRayTracingExtensions = false; // for vulkan
         bool enableComputeQueue = false;

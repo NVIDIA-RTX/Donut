@@ -211,8 +211,11 @@ bool DeviceManager_DX12::CreateDevice()
     
     // No-op unless NVRHI was built with NVRHI_D3D12_WITH_DXRCLUSTER; must happen before
     // D3D12CreateDevice, since changing feature enablement removes all live devices.
-    nvrhi::d3d12::enableExperimentalFeatures(
-        m_DeviceParams.messageCallback ? m_DeviceParams.messageCallback : &DefaultMessageCallback::GetInstance());
+    if (m_DeviceParams.enableDxrClusters)
+    {
+        nvrhi::d3d12::enableExperimentalFeatures(
+            m_DeviceParams.messageCallback ? m_DeviceParams.messageCallback : &DefaultMessageCallback::GetInstance());
+    }
 
     int adapterIndex = m_DeviceParams.adapterIndex;
 
@@ -325,6 +328,8 @@ bool DeviceManager_DX12::CreateDevice()
     deviceDesc.logBufferLifetime = m_DeviceParams.logBufferLifetime;
     deviceDesc.enableHeapDirectlyIndexed = m_DeviceParams.enableHeapDirectlyIndexed;
     deviceDesc.enableRayTracingValidation = m_DeviceParams.enableRayTracingValidation;
+    deviceDesc.enableDxrClusters = m_DeviceParams.enableDxrClusters;
+    deviceDesc.enableNvapiClusters = m_DeviceParams.enableNvapiClusters;
 
     m_NvrhiDevice = nvrhi::d3d12::createDevice(deviceDesc);
 

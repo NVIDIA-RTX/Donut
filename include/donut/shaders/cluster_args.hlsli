@@ -25,13 +25,18 @@
 
 #include <nvrhi/nvrhiHLSL.h>
 
-// Selects the NVRHI cluster-operation layouts for the target being compiled. DXIL for an NVRHI
-// built with NVRHI_D3D12_WITH_DXRCLUSTER takes the DXR clusters layouts; NVAPI and Vulkan share the nv ones.
-// donut_compile_shaders passes NVRHI_D3D12_WITH_DXRCLUSTER to DXIL compiles when it is enabled.
-#if defined(TARGET_D3D12) && NVRHI_D3D12_WITH_DXRCLUSTER
+// Selects the NVRHI cluster-operation layouts for the shader being compiled. They follow the
+// device's nvrhi::ClusterApi, so a D3D12 shader that uses them is compiled twice, and the
+// variant for devices with DXR clusters defines DONUT_CLUSTER_API_DXR=1.
+#ifndef DONUT_CLUSTER_API_DXR
+#define DONUT_CLUSTER_API_DXR 0
+#endif
 
-#define DONUT_CLUSTER_ARGS_DXR 1
+#if DONUT_CLUSTER_API_DXR && !defined(TARGET_D3D12)
+#error "DONUT_CLUSTER_API_DXR set for a non-D3D12 target: Vulkan always uses the nv layouts, so add the DXR cluster variant to DXIL only"
+#endif
 
+#if DONUT_CLUSTER_API_DXR
 namespace donut
 {
     namespace cluster
@@ -42,11 +47,7 @@ namespace donut
         using OperationSize                   = nvrhi::rt::cluster::dxr::OperationSize;
     }
 }
-
 #else
-
-#define DONUT_CLUSTER_ARGS_DXR 0
-
 namespace donut
 {
     namespace cluster
@@ -57,7 +58,6 @@ namespace donut
         using OperationSize                   = nvrhi::rt::cluster::nv::OperationSize;
     }
 }
-
 #endif
 
 #endif // CLUSTER_ARGS_HLSLI
