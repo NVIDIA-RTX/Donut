@@ -138,6 +138,8 @@ public:
     virtual void SetDLSSOptions(const DLSSOptions& options) = 0;
     virtual bool IsDLSSAvailable() const = 0;
     virtual void QueryDLSSOptimalSettings(const DLSSOptions& options, DLSSSettings& settings) = 0;
+    // Zero when DLSS is unavailable or has not been set up on the current viewport.
+    virtual void QueryDLSSState(uint64_t& estimatedVRamUsage) = 0;
     virtual void EvaluateDLSS(nvrhi::ICommandList* commandList) = 0;
     virtual void CleanupDLSS(bool wfi) = 0;
 
@@ -271,11 +273,11 @@ public:
         uint32_t mvecDepthHeight{};
         uint32_t colorWidth{};
         uint32_t colorHeight{};
-        uint32_t colorBufferFormat{};
-        uint32_t mvecBufferFormat{};
-        uint32_t depthBufferFormat{};
-        uint32_t hudLessBufferFormat{};
-        uint32_t uiBufferFormat{};
+        nvrhi::Format colorBufferFormat = nvrhi::Format::UNKNOWN;
+        nvrhi::Format mvecBufferFormat = nvrhi::Format::UNKNOWN;
+        nvrhi::Format depthBufferFormat = nvrhi::Format::UNKNOWN;
+        nvrhi::Format hudLessBufferFormat = nvrhi::Format::UNKNOWN;
+        nvrhi::Format uiBufferFormat = nvrhi::Format::UNKNOWN;
         bool useReflexMatrices = false;
         DLSSGQueueParallelismMode queueParallelismMode{};
     };
@@ -302,6 +304,9 @@ public:
     virtual void GetDLSSGState(DLSSGState& state, const DLSSGOptions& options) = 0;
     virtual void SetDLSSGOptions(const DLSSGOptions& options) = 0;
     virtual bool IsDLSSGAvailable() const = 0;
+    // Estimate for the options last passed to SetDLSSGOptions, recomputed by Streamline on each call rather
+    // than measured; zero when DLSS-G is unavailable or off.
+    virtual void QueryDLSSGState(uint64_t& estimatedVRamUsage) = 0;
     virtual void CleanupDLSSG(bool wfi) = 0;
 
     // See dlss_d.h for documentation
@@ -350,6 +355,8 @@ public:
     virtual void SetDLSSRROptions(const DLSSRROptions& options) = 0;
     virtual bool IsDLSSRRAvailable() const = 0;
     virtual void QueryDLSSRROptimalSettings(const DLSSRROptions& options, DLSSRRSettings& settings) = 0;
+    // Zero when DLSS-RR is unavailable or has not been set up on the current viewport.
+    virtual void QueryDLSSRRState(uint64_t& estimatedVRamUsage) = 0;
     virtual void EvaluateDLSSRR(nvrhi::ICommandList* commandList) = 0;
 
     virtual void TagResourcesGeneral(
