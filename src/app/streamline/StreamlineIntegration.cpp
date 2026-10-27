@@ -756,6 +756,17 @@ void StreamlineIntegration::QueryDLSSOptimalSettings(const DLSSOptions& options,
     settings.maxRenderSize.y = dlssOptimal.renderHeightMax;
 }
 
+void StreamlineIntegration::QueryDLSSState(uint64_t& estimatedVRamUsage)
+{
+    estimatedVRamUsage = 0;
+    if (!m_slInitialized || !m_dlssAvailable)
+        return;
+
+    sl::DLSSState state;
+    if (successCheck(slDLSSGetState(m_viewport, state), "slDLSSGetState"))
+        estimatedVRamUsage = state.estimatedVRAMUsageInBytes;
+}
+
 #if STREAMLINE_HAS_DLSS_RR
 static sl::DLSSDOptions ConvertOptions(const StreamlineIntegration::DLSSRROptions& options)
 {
@@ -844,6 +855,19 @@ void StreamlineIntegration::QueryDLSSRROptimalSettings(const DLSSRROptions& opti
     settings.minRenderSize.y = dlssOptimal.renderHeightMin;
     settings.maxRenderSize.x = dlssOptimal.renderWidthMax;
     settings.maxRenderSize.y = dlssOptimal.renderHeightMax;
+#endif
+}
+
+void StreamlineIntegration::QueryDLSSRRState(uint64_t& estimatedVRamUsage)
+{
+    estimatedVRamUsage = 0;
+#if STREAMLINE_HAS_DLSS_RR
+    if (!m_slInitialized || !m_dlssrrAvailable)
+        return;
+
+    sl::DLSSDState state;
+    if (successCheck(slDLSSDGetState(m_viewport, state), "slDLSSDGetState"))
+        estimatedVRamUsage = state.estimatedVRAMUsageInBytes;
 #endif
 }
 
@@ -962,14 +986,29 @@ void StreamlineIntegration::CleanupDeepDVC()
     successCheck(slFreeResources(sl::kFeatureDeepDVC, m_viewport), "slFreeResources_DeepDVC");
 }
 
-void StreamlineIntegration::SetDLSSGOptions(const DLSSGOptions& options)
+// Streamline takes native formats; zero means not provided.
+static uint32_t ConvertFormat(nvrhi::GraphicsAPI api, nvrhi::Format format)
 {
-    if (!m_slInitialized || !m_dlssgAvailable)
-    {
-        log::warning("SL not initialised or DLSSG not available.");
-        return;
-    }
+    if (format == nvrhi::Format::UNKNOWN)
+        return 0;
 
+    switch (api)
+    {
+#if DONUT_WITH_DX12
+    case nvrhi::GraphicsAPI::D3D12:
+        return static_cast<uint32_t>(nvrhi::d3d12::convertFormat(format));
+#endif
+#if DONUT_WITH_VULKAN
+    case nvrhi::GraphicsAPI::VULKAN:
+        return static_cast<uint32_t>(nvrhi::vulkan::convertFormat(format));
+#endif
+    default:
+        return 0;
+    }
+}
+
+static sl::DLSSGOptions ConvertOptions(const StreamlineIntegration::DLSSGOptions& options, nvrhi::GraphicsAPI api)
+{
     sl::DLSSGOptions slOptions;
     slOptions.mode = (sl::DLSSGMode)options.mode;
     slOptions.numFramesToGenerate = options.numFramesToGenerate;
@@ -981,18 +1020,30 @@ void StreamlineIntegration::SetDLSSGOptions(const DLSSGOptions& options)
     slOptions.mvecDepthHeight = options.mvecDepthHeight;
     slOptions.colorWidth = options.colorWidth;
     slOptions.colorHeight = options.colorHeight;
-    slOptions.colorBufferFormat = options.colorBufferFormat;
-    slOptions.mvecBufferFormat = options.mvecBufferFormat;
-    slOptions.depthBufferFormat = options.depthBufferFormat;
-    slOptions.hudLessBufferFormat = options.hudLessBufferFormat;
-    slOptions.uiBufferFormat = options.uiBufferFormat;
+    slOptions.colorBufferFormat = ConvertFormat(api, options.colorBufferFormat);
+    slOptions.mvecBufferFormat = ConvertFormat(api, options.mvecBufferFormat);
+    slOptions.depthBufferFormat = ConvertFormat(api, options.depthBufferFormat);
+    slOptions.hudLessBufferFormat = ConvertFormat(api, options.hudLessBufferFormat);
+    slOptions.uiBufferFormat = ConvertFormat(api, options.uiBufferFormat);
     slOptions.onErrorCallback = nullptr; // donut does not expose this
 
 #if (SL_VERSION_MAJOR >= 2 && (SL_VERSION_MAJOR > 2 || SL_VERSION_MINOR >= 7))
     slOptions.queueParallelismMode = (sl::DLSSGQueueParallelismMode)options.queueParallelismMode;
 #endif
 
-    successCheck(slDLSSGSetOptions(m_viewport, slOptions), "slDLSSGSetOptions");
+    return slOptions;
+}
+
+void StreamlineIntegration::SetDLSSGOptions(const DLSSGOptions& options)
+{
+    if (!m_slInitialized || !m_dlssgAvailable)
+    {
+        log::warning("SL not initialised or DLSSG not available.");
+        return;
+    }
+
+    successCheck(slDLSSGSetOptions(m_viewport, ConvertOptions(options, m_api)), "slDLSSGSetOptions");
+    m_dlssgOptions = options;
 }
 
 void StreamlineIntegration::GetDLSSGState(DLSSGState& state, const DLSSGOptions& options)
@@ -1003,23 +1054,7 @@ void StreamlineIntegration::GetDLSSGState(DLSSGState& state, const DLSSGOptions&
         return;
     }
 
-    sl::DLSSGOptions slOptions;
-    slOptions.mode = (sl::DLSSGMode)options.mode;
-    slOptions.numFramesToGenerate = options.numFramesToGenerate;
-    slOptions.flags = (sl::DLSSGFlags)options.flags;
-    slOptions.dynamicResWidth = options.dynamicResWidth;
-    slOptions.dynamicResHeight = options.dynamicResHeight;
-    slOptions.numBackBuffers = options.numBackBuffers;
-    slOptions.mvecDepthWidth = options.mvecDepthWidth;
-    slOptions.mvecDepthHeight = options.mvecDepthHeight;
-    slOptions.colorWidth = options.colorWidth;
-    slOptions.colorHeight = options.colorHeight;
-    slOptions.colorBufferFormat = options.colorBufferFormat;
-    slOptions.mvecBufferFormat = options.mvecBufferFormat;
-    slOptions.depthBufferFormat = options.depthBufferFormat;
-    slOptions.hudLessBufferFormat = options.hudLessBufferFormat;
-    slOptions.uiBufferFormat = options.uiBufferFormat;
-    slOptions.onErrorCallback = nullptr; // donut does not expose this
+    sl::DLSSGOptions slOptions = ConvertOptions(options, m_api);
 
     sl::DLSSGState slState;
     successCheck(slDLSSGGetState(m_viewport, slState, &slOptions), "slDLSSGGetState");
@@ -1043,6 +1078,19 @@ void StreamlineIntegration::GetDLSSGState(DLSSGState& state, const DLSSGOptions&
     state.bIsVsyncSupportAvailable = slState.bIsVsyncSupportAvailable;
     state.inputsProcessingCompletionFence = slState.inputsProcessingCompletionFence;
     state.lastPresentInputsProcessingCompletionFenceValue = slState.lastPresentInputsProcessingCompletionFenceValue;
+}
+
+void StreamlineIntegration::QueryDLSSGState(uint64_t& estimatedVRamUsage)
+{
+    estimatedVRamUsage = 0;
+    if (!m_slInitialized || !m_dlssgAvailable || m_dlssgOptions.mode == DLSSGMode::eOff)
+        return;
+
+    DLSSGOptions options = m_dlssgOptions;
+    options.flags = DLSSGFlags(uint32_t(options.flags) | uint32_t(DLSSGFlags::eRequestVRAMEstimate));
+    DLSSGState state;
+    GetDLSSGState(state, options);
+    estimatedVRamUsage = state.estimatedVRAMUsageInBytes;
 }
 
 void StreamlineIntegration::CleanupDLSSG(bool wfi)

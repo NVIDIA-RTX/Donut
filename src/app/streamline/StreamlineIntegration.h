@@ -43,6 +43,7 @@ public:
     virtual void SetDLSSOptions(const DLSSOptions& options) override;
     virtual bool IsDLSSAvailable() const override { return m_dlssAvailable; }
     virtual void QueryDLSSOptimalSettings(const DLSSOptions& options, DLSSSettings& settings) override;
+    virtual void QueryDLSSState(uint64_t& estimatedVRamUsage) override;
     virtual void EvaluateDLSS(nvrhi::ICommandList* commandList) override;
     virtual void CleanupDLSS(bool wfi) override;
 
@@ -67,11 +68,13 @@ public:
     virtual void GetDLSSGState(DLSSGState& state, const DLSSGOptions& options) override;
     virtual void SetDLSSGOptions(const DLSSGOptions& options) override;
     virtual bool IsDLSSGAvailable() const override { return m_dlssgAvailable; }
+    virtual void QueryDLSSGState(uint64_t& estimatedVRamUsage) override;
     virtual void CleanupDLSSG(bool wfi) override;
 
     virtual void SetDLSSRROptions(const DLSSRROptions& options) override;
     virtual bool IsDLSSRRAvailable() const override { return m_dlssrrAvailable; }
     virtual void QueryDLSSRROptimalSettings(const DLSSRROptions& options, DLSSRRSettings& settings) override;
+    virtual void QueryDLSSRRState(uint64_t& estimatedVRamUsage) override;
     virtual void EvaluateDLSSRR(nvrhi::ICommandList* commandList) override;
 
     virtual void TagResourcesGeneral(
@@ -140,6 +143,8 @@ private:
     bool m_dlssrrAvailable = false;
     bool m_reflexAvailable = false;
     bool m_pclAvailable = false;
+
+    DLSSGOptions m_dlssgOptions;
 
     static sl::Resource AllocateResourceCallback(const sl::ResourceAllocationDesc* resDesc, void* device);
     static void ReleaseResourceCallback(sl::Resource* resource, void* device);

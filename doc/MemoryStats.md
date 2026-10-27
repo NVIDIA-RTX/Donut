@@ -23,6 +23,19 @@ backend support and exceptions, allocation interpretation, and the native
 `IDevice::queryTopLevelAccelStructPrebuildInfo` API. Application-specific pooled BLAS/OMM
 attribution and statistics UI remain the consuming application's responsibility.
 
+## Memory outside scene resources
+
+Command lists keep their upload and acceleration structure scratch chunks until they are
+destroyed. `nvrhi::ICommandList::getInternalMemoryUsage()` returns the total size of those
+chunks as `uploadBytes` (CPU-visible) and `scratchBytes` (device-local); D3D11 reports zeros.
+
+With Streamline, `StreamlineInterface` reports the estimated VRAM of each feature on the
+current viewport: `QueryDLSSState` (super resolution), `QueryDLSSRRState` (ray
+reconstruction) and `QueryDLSSGState` (frame generation). Each returns zero when the feature
+is unavailable or not set up. `QueryDLSSGState` estimates for the sizes and formats last
+passed to `SetDLSSGOptions`; Streamline recomputes the estimate on each call rather than
+measuring allocated memory.
+
 The headless [memory statistics regression](../tests/src/memory_stats.cpp) covers the public
 helper and scene aggregation. Its build conditions and CTest registration are defined in
 [tests/test-engine.cmake](../tests/test-engine.cmake).
