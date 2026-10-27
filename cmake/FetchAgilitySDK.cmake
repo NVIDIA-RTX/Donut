@@ -155,6 +155,15 @@ if(_d3d_agility_include)
     # d3d12.h instead.
     if(EXISTS "${_d3d_agility_include}/d3d12.idl")
         file(READ "${_d3d_agility_include}/d3d12.idl" _d3d12_idl)
+        # Release packages define D3D12_PREVIEW_SDK_VERSION too; only a -preview nuspec marks a preview.
+        set(_d3d_agility_nuspec "${DONUT_D3D_AGILITY_SDK_PATH}/Microsoft.Direct3D.D3D12.nuspec")
+        if(EXISTS "${_d3d_agility_nuspec}")
+            file(STRINGS "${_d3d_agility_nuspec}" _d3d_agility_nuspec_preview REGEX "<version>[^<]*-preview</version>")
+            if(_d3d_agility_nuspec_preview)
+                string(REGEX MATCH "const UINT D3D12_PREVIEW_SDK_VERSION = ([0-9]+)" _preview_match ${_d3d12_idl})
+                set(_d3d_agility_preview_version "${CMAKE_MATCH_1}")
+            endif()
+        endif()
         string(REGEX MATCH "const UINT D3D12_SDK_VERSION = ([0-9]+)" _match ${_d3d12_idl})
     else()
         file(READ "${_d3d_agility_include}/d3d12.h" _d3d12_h)
@@ -188,7 +197,7 @@ if(NVRHI_D3D12_WITH_DXRCLUSTER AND NOT (DONUT_D3D_AGILITY_SDK_PREVIEW AND DONUT_
     message(FATAL_ERROR "NVRHI_D3D12_WITH_DXRCLUSTER requires exactly the 1.${DONUT_DXRCLUSTER_AGILITY_SDK_VERSION} preview D3D12 Agility SDK "
                         "(later previews are not guaranteed to work with NVIDIA driver 621.01), "
                         "but DONUT_D3D_AGILITY_SDK_PATH (${DONUT_D3D_AGILITY_SDK_PATH}) is version '${DONUT_D3D_AGILITY_SDK_VERSION}'. "
-                        "Point it at the extracted preview package or its 1.${DONUT_DXRCLUSTER_AGILITY_SDK_VERSION} folder.")
+                        "Fetch the 1.${DONUT_DXRCLUSTER_AGILITY_SDK_VERSION}.0-preview NuGet package, or point it at the extracted preview package or its 1.${DONUT_DXRCLUSTER_AGILITY_SDK_VERSION} folder.")
 endif()
 
 # NVRHI compiles its DXR cluster path against these headers, so they must come from the SDK
