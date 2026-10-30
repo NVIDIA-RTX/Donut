@@ -58,7 +58,7 @@ freely, subject to the following restrictions:
 #endif
 
 #if DONUT_WITH_DX12
-#include <directx/d3d12.h>
+#include <nvrhi/d3d12.h> // picks the same d3d12.h as NVRHI, which differs with NVRHI_D3D12_WITH_DXRCLUSTER
 #endif
 
 #if DONUT_WITH_VULKAN
@@ -177,6 +177,9 @@ namespace donut::app
         uint32_t maxFramesInFlight = 2;
         bool enableNvrhiValidationLayer = false;
         bool enableRayTracingValidation = false;
+        // DX12 only: the cluster operation APIs the device may pick from (nvrhi::d3d12::DeviceDesc).
+        bool enableDxrClusters = true;
+        bool enableNvapiClusters = true;
         bool vsyncEnabled = false;
         bool enableRayTracingExtensions = false; // for vulkan
         bool enableComputeQueue = false;
