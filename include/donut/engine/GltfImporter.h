@@ -22,6 +22,7 @@
 
 #pragma once
 
+#include <donut/engine/SceneTypes.h>
 #include <memory>
 #include <filesystem>
 
@@ -49,9 +50,13 @@ namespace donut::engine
     protected:
         std::shared_ptr<vfs::IFileSystem> m_fs;
         std::shared_ptr<SceneTypeFactory> m_SceneTypeFactory;
+        const TexCoordFormat m_TexCoordFormat;
         
     public:
-        explicit GltfImporter(std::shared_ptr<vfs::IFileSystem> fs, std::shared_ptr<SceneTypeFactory> sceneTypeFactory);
+        // Selects GPU storage for both UV streams independently of the source glTF accessor format.
+        explicit GltfImporter(std::shared_ptr<vfs::IFileSystem> fs,
+            std::shared_ptr<SceneTypeFactory> sceneTypeFactory,
+            TexCoordFormat texCoordFormat = TexCoordFormat::Float32);
         
         bool Load(
             const std::filesystem::path& fileName,

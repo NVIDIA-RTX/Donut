@@ -64,9 +64,11 @@ public:
 
 
 
-GltfImporter::GltfImporter(std::shared_ptr<vfs::IFileSystem> fs, std::shared_ptr<SceneTypeFactory> sceneTypeFactory)
+GltfImporter::GltfImporter(std::shared_ptr<vfs::IFileSystem> fs,
+    std::shared_ptr<SceneTypeFactory> sceneTypeFactory, TexCoordFormat texCoordFormat)
     : m_fs(std::move(fs))
     , m_SceneTypeFactory(std::move(sceneTypeFactory))
+    , m_TexCoordFormat(texCoordFormat)
 {
 }
 
@@ -1056,6 +1058,7 @@ bool GltfImporter::Load(
     }
 
     auto buffers = std::make_shared<BufferGroup>();
+    buffers->texCoordFormat = m_TexCoordFormat;
 
     buffers->indexData.resize(totalIndices);
     buffers->positionData.resize(totalVertices);

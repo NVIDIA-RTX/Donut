@@ -4,7 +4,9 @@
 #include <donut/engine/MemoryStats.h>
 #include <donut/engine/Scene.h>
 #include <donut/engine/ShaderFactory.h>
+#if DONUT_WITH_DX11
 #include <nvrhi/d3d11.h>
+#endif
 #include <nvrhi/d3d12.h>
 #if TEST_VALIDATION
 #include <nvrhi/validation.h>
@@ -199,6 +201,7 @@ int main(int argc, char** argv)
         check(argc == 3, "usage: test_memory_stats d3d11|d3d12 shader-directory");
         Messages messages;
         const std::string backend = argv[1];
+#if DONUT_WITH_DX11
         if (backend == "d3d11")
         {
             ComPtr<ID3D11Device> native;
@@ -211,7 +214,9 @@ int main(int argc, char** argv)
             auto device = nvrhi::d3d11::createDevice(desc);
             runDevice(device, messages, argv[2]);
         }
-        else if (backend == "d3d12")
+        else
+#endif
+        if (backend == "d3d12")
         {
             ComPtr<IDXGIFactory4> factory;
             ComPtr<IDXGIAdapter> adapter;

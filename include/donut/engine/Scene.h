@@ -123,6 +123,10 @@ namespace donut::engine
         
         void FinishedLoading(uint32_t frameIndex);
 
+        // Affects subsequent model imports only. Call before Load/LoadWithThreadPool.
+        // Existing BufferGroups can be configured individually before their first GPU upload.
+        void SetDefaultTexCoordFormat(TexCoordFormat format);
+
         // Processes animations, transforms, bounding boxes etc.
         void RefreshSceneGraph(uint32_t frameIndex);
 

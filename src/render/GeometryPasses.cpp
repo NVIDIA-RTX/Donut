@@ -39,6 +39,25 @@ void donut::render::RenderView(
     GeometryPassContext& passContext,
     bool materialEvents)
 {
+    // Limit cached constants and geometry hints to this recording scope, including
+    // exceptional exits. A context can subsequently be reused by direct pass calls.
+    struct RecordingScope
+    {
+        GeometryPassContext& context;
+        explicit RecordingScope(GeometryPassContext& context) : context(context)
+        {
+            context.geometry = nullptr;
+            context.pushConstantsValid = false;
+            context.enablePushConstantCaching = true;
+        }
+        ~RecordingScope()
+        {
+            context.geometry = nullptr;
+            context.pushConstantsValid = false;
+            context.enablePushConstantCaching = false;
+        }
+    } recordingScope(passContext);
+
     pass.SetupView(passContext, commandList, view, viewPrev);
 
     const Material* lastMaterial = nullptr;
@@ -107,7 +126,9 @@ void donut::render::RenderView(
             stateValid = false;
         }
 
-        if (newMaterial)
+        // Input buffers can change the vertex layout and material binding state, even
+        // when adjacent draws share a material.
+        if (newMaterial || newBuffers)
         {
             drawMaterial = pass.SetupMaterial(passContext, item->material, item->cullMode, graphicsState);
 
@@ -120,6 +141,9 @@ void donut::render::RenderView(
         {
             if (!stateValid)
             {
+                // NVRHI requires a new push write after every graphics-state set,
+                // even if the pipeline and constant values are unchanged.
+                passContext.pushConstantsValid = false;
                 commandList->setGraphicsState(graphicsState);
                 stateValid = true;
             }
@@ -133,6 +157,8 @@ void donut::render::RenderView(
 
             if (currentDraw.instanceCount > 0 && 
                 currentDraw.startIndexLocation == args.startIndexLocation && 
+                currentDraw.startVertexLocation == args.startVertexLocation &&
+                currentDraw.vertexCount == args.vertexCount &&
                 currentDraw.startInstanceLocation + currentDraw.instanceCount == args.startInstanceLocation)
             {
                 currentDraw.instanceCount += 1;
@@ -142,6 +168,7 @@ void donut::render::RenderView(
                 flushDraw(item->material);
 
                 currentDraw = args;
+                passContext.geometry = item->geometry;
             }
         }
     }
