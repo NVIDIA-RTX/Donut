@@ -44,7 +44,9 @@ if (CMAKE_CXX_COMPILER_ARCHITECTURE_ID MATCHES "^(x64|x86_64)$")
     endif()
 endif()
 
-string(APPEND CMAKE_CXX_FLAGS_DEBUG " -D_DEBUG")
+if (NOT MSVC)
+    string(APPEND CMAKE_CXX_FLAGS_DEBUG " -D_DEBUG")
+endif()
 
 include(CMakeDependentOption)
 include(FetchContent)
