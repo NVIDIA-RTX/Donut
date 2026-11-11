@@ -47,6 +47,7 @@ freely, subject to the following restrictions:
    distribution.
 */
 
+#include <algorithm>
 #include <string>
 #include <queue>
 #include <unordered_set>
@@ -506,7 +507,10 @@ bool DeviceManager_VK::pickPhysicalDevice()
                 if (!surfaceFormatPresent)
                 {
                     // can't create a swap chain using the format requested
-                    errorStream << std::endl << "  - does not support the requested swap chain format";
+                    errorStream << std::endl << "  - does not support the requested swap chain format "
+                                << vk::to_string(vk::Format(requestedFormat)) << ", available:";
+                    for (const vk::SurfaceFormatKHR& surfaceFmt : surfaceFmts)
+                        errorStream << " " << vk::to_string(surfaceFmt.format);
                     deviceIsGood = false;
                 }
 
@@ -960,9 +964,40 @@ bool DeviceManager_VK::createSwapChain()
 
     const bool enableSwapChainSharing = queues.size() > 1;
 
+    // Opaque, FIFO/immediate and the requested image count, where the surface supports them: an
+    // Android surface often takes only an inherited alpha, and no immediate presentation.
+    const auto surfaceCaps = m_VulkanPhysicalDevice.getSurfaceCapabilitiesKHR(m_WindowSurface);
+
+    uint32_t minImageCount = std::max(m_DeviceParams.swapChainBufferCount, surfaceCaps.minImageCount);
+    if (surfaceCaps.maxImageCount != 0)
+        minImageCount = std::min(minImageCount, surfaceCaps.maxImageCount);
+
+    vk::CompositeAlphaFlagBitsKHR compositeAlpha = vk::CompositeAlphaFlagBitsKHR::eOpaque;
+    if (!(surfaceCaps.supportedCompositeAlpha & compositeAlpha))
+    {
+        for (auto candidate : { vk::CompositeAlphaFlagBitsKHR::eInherit, vk::CompositeAlphaFlagBitsKHR::ePreMultiplied,
+                                vk::CompositeAlphaFlagBitsKHR::ePostMultiplied })
+        {
+            if (surfaceCaps.supportedCompositeAlpha & candidate)
+            {
+                compositeAlpha = candidate;
+                break;
+            }
+        }
+    }
+
+    vk::PresentModeKHR presentMode = m_DeviceParams.vsyncEnabled ? vk::PresentModeKHR::eFifo : vk::PresentModeKHR::eImmediate;
+    const auto presentModes = m_VulkanPhysicalDevice.getSurfacePresentModesKHR(m_WindowSurface);
+    if (std::find(presentModes.begin(), presentModes.end(), presentMode) == presentModes.end())
+    {
+        // FIFO is always there; without vsync, mailbox doesn't wait for it either
+        const bool mailbox = std::find(presentModes.begin(), presentModes.end(), vk::PresentModeKHR::eMailbox) != presentModes.end();
+        presentMode = !m_DeviceParams.vsyncEnabled && mailbox ? vk::PresentModeKHR::eMailbox : vk::PresentModeKHR::eFifo;
+    }
+
     auto desc = vk::SwapchainCreateInfoKHR()
                     .setSurface(m_WindowSurface)
-                    .setMinImageCount(m_DeviceParams.swapChainBufferCount)
+                    .setMinImageCount(minImageCount)
                     .setImageFormat(m_SwapChainFormat.format)
                     .setImageColorSpace(m_SwapChainFormat.colorSpace)
                     .setImageExtent(extent)
@@ -973,8 +1008,8 @@ bool DeviceManager_VK::createSwapChain()
                     .setQueueFamilyIndexCount(enableSwapChainSharing ? uint32_t(queues.size()) : 0)
                     .setPQueueFamilyIndices(enableSwapChainSharing ? queues.data() : nullptr)
                     .setPreTransform(vk::SurfaceTransformFlagBitsKHR::eIdentity)
-                    .setCompositeAlpha(vk::CompositeAlphaFlagBitsKHR::eOpaque)
-                    .setPresentMode(m_DeviceParams.vsyncEnabled ? vk::PresentModeKHR::eFifo : vk::PresentModeKHR::eImmediate)
+                    .setCompositeAlpha(compositeAlpha)
+                    .setPresentMode(presentMode)
                     .setClipped(true)
                     .setOldSwapchain(nullptr);
     
@@ -1031,6 +1066,15 @@ bool DeviceManager_VK::createSwapChain()
     }
 
     m_SwapChainIndex = 0;
+
+    // A semaphore per image, also for a swap chain made again (resized, or with vsync toggled),
+    // which can have more images than the first one: a mailbox one on Android does.
+    while (m_PresentSemaphores.size() < m_SwapChainImages.size())
+        m_PresentSemaphores.push_back(m_VulkanDevice.createSemaphore(vk::SemaphoreCreateInfo()));
+
+    const size_t numAcquireSemaphores = std::max(size_t(m_DeviceParams.maxFramesInFlight), m_SwapChainImages.size());
+    while (m_AcquireSemaphores.size() < numAcquireSemaphores)
+        m_AcquireSemaphores.push_back(m_VulkanDevice.createSemaphore(vk::SemaphoreCreateInfo()));
 
     return true;
 }
@@ -1161,10 +1205,13 @@ bool DeviceManager_VK::CreateDevice()
     if (!m_DeviceParams.headlessDevice)
     {
         // Need to adjust the swap chain format before creating the device because it affects physical device selection
+        // (Android's surfaces are RGBA, without the BGRA formats)
+#ifndef __ANDROID__
         if (m_DeviceParams.swapChainFormat == nvrhi::Format::SRGBA8_UNORM)
             m_DeviceParams.swapChainFormat = nvrhi::Format::SBGRA8_UNORM;
         else if (m_DeviceParams.swapChainFormat == nvrhi::Format::RGBA8_UNORM)
             m_DeviceParams.swapChainFormat = nvrhi::Format::BGRA8_UNORM;
+#endif
 
         CHECK(createWindowSurface())
     }
@@ -1230,22 +1277,8 @@ bool DeviceManager_VK::CreateDevice()
 
 bool DeviceManager_VK::CreateSwapChain()
 {
+    // (and its semaphores)
     CHECK(createSwapChain())
-
-    size_t const numPresentSemaphores = m_SwapChainImages.size();
-    m_PresentSemaphores.reserve(numPresentSemaphores);
-    for (uint32_t i = 0; i < numPresentSemaphores; ++i)
-    {
-        m_PresentSemaphores.push_back(m_VulkanDevice.createSemaphore(vk::SemaphoreCreateInfo()));
-    }
-
-    size_t const numAcquireSemaphores = std::max(size_t(m_DeviceParams.maxFramesInFlight),
-        m_SwapChainImages.size());
-    m_AcquireSemaphores.reserve(numAcquireSemaphores);
-    for (uint32_t i = 0; i < numAcquireSemaphores; ++i)
-    {
-        m_AcquireSemaphores.push_back(m_VulkanDevice.createSemaphore(vk::SemaphoreCreateInfo()));
-    }
 
     return true;
 }
@@ -1323,7 +1356,15 @@ bool DeviceManager_VK::BeginFrame()
             vk::Fence(),
             &m_SwapChainIndex);
 
-        if ((res == vk::Result::eErrorOutOfDateKHR || res == vk::Result::eSuboptimalKHR) && attempt < maxAttempts)
+#ifdef __ANDROID__
+        // A rotated display reports the swap chain suboptimal for as long as it isn't pre-rotated
+        // (it is created with an identity transform, the compositor rotates): a new one would be
+        // just as suboptimal, so only an out of date one is recreated.
+        const bool recreate = res == vk::Result::eErrorOutOfDateKHR;
+#else
+        const bool recreate = res == vk::Result::eErrorOutOfDateKHR || res == vk::Result::eSuboptimalKHR;
+#endif
+        if (recreate && attempt < maxAttempts)
         {
             BackBufferResizing();
             auto surfaceCaps = m_VulkanPhysicalDevice.getSurfaceCapabilitiesKHR(m_WindowSurface);
