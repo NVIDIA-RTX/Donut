@@ -230,6 +230,8 @@ protected:
     vk::PhysicalDevice m_VulkanPhysicalDevice;
     int m_GraphicsQueueFamily = -1;
     int m_ComputeQueueFamily = -1;
+    // 0 in a family of its own; 1 when it shares the graphics family (see findQueueFamilies)
+    uint32_t m_ComputeQueueIndex = 0;
     int m_TransferQueueFamily = -1;
     int m_PresentQueueFamily = -1;
 

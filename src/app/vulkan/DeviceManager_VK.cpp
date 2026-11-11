@@ -69,7 +69,6 @@ VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE
 using namespace donut;
 using namespace donut::app;
 
-static constexpr uint32_t kComputeQueueIndex = 0;
 static constexpr uint32_t kGraphicsQueueIndex = 0;
 static constexpr uint32_t kPresentQueueIndex = 0;
 static constexpr uint32_t kTransferQueueIndex = 0;
@@ -568,6 +567,10 @@ bool DeviceManager_VK::findQueueFamilies(vk::PhysicalDevice physicalDevice)
 {
     auto props = physicalDevice.getQueueFamilyProperties();
 
+    // pickPhysicalDevice calls this for each device: start over, not from the last one's families
+    m_GraphicsQueueFamily = m_ComputeQueueFamily = m_TransferQueueFamily = m_PresentQueueFamily = -1;
+    m_ComputeQueueIndex = 0;
+
     for(int i = 0; i < int(props.size()); i++)
     {
         const auto& queueFamily = props[i];
@@ -610,6 +613,17 @@ bool DeviceManager_VK::findQueueFamilies(vk::PhysicalDevice physicalDevice)
                 m_PresentQueueFamily = i;
             }
         }
+    }
+
+    // Most mobile GPUs (Adreno, Mali) have one family for everything: then the compute queue is the
+    // graphics family's second queue, still asynchronous to the graphics queue. Not the graphics
+    // queue itself, which the compute thread and the render thread would submit to at once.
+    if (m_ComputeQueueFamily == -1 && m_GraphicsQueueFamily != -1 &&
+        props[m_GraphicsQueueFamily].queueCount > 1 &&
+        (props[m_GraphicsQueueFamily].queueFlags & vk::QueueFlagBits::eCompute))
+    {
+        m_ComputeQueueFamily = m_GraphicsQueueFamily;
+        m_ComputeQueueIndex = 1;
     }
 
     if (m_GraphicsQueueFamily == -1 || 
@@ -739,15 +753,19 @@ bool DeviceManager_VK::createDevice()
     if (m_DeviceParams.enableCopyQueue)
         uniqueQueueFamilies.insert(m_TransferQueueFamily);
 
-    float priority = 1.f;
+    // one queue in each family, two in the graphics family when the compute queue shares it
+    const float priorities[] = { 1.f, 1.f };
     std::vector<vk::DeviceQueueCreateInfo> queueDesc;
     queueDesc.reserve(uniqueQueueFamilies.size());
     for(int queueFamily : uniqueQueueFamilies)
     {
+        uint32_t queueCount = 1;
+        if (m_DeviceParams.enableComputeQueue && queueFamily == m_ComputeQueueFamily)
+            queueCount = m_ComputeQueueIndex + 1;
         queueDesc.push_back(vk::DeviceQueueCreateInfo()
                                 .setQueueFamilyIndex(queueFamily)
-                                .setQueueCount(1)
-                                .setPQueuePriorities(&priority));
+                                .setQueueCount(queueCount)
+                                .setPQueuePriorities(priorities));
     }
 
     auto accelStructFeatures = vk::PhysicalDeviceAccelerationStructureFeaturesKHR()
@@ -896,7 +914,7 @@ bool DeviceManager_VK::createDevice()
 
     m_VulkanDevice.getQueue(m_GraphicsQueueFamily, kGraphicsQueueIndex, &m_GraphicsQueue);
     if (m_DeviceParams.enableComputeQueue)
-        m_VulkanDevice.getQueue(m_ComputeQueueFamily, kComputeQueueIndex, &m_ComputeQueue);
+        m_VulkanDevice.getQueue(m_ComputeQueueFamily, m_ComputeQueueIndex, &m_ComputeQueue);
     if (m_DeviceParams.enableCopyQueue)
         m_VulkanDevice.getQueue(m_TransferQueueFamily, kTransferQueueIndex, &m_TransferQueue);
     if (!m_DeviceParams.headlessDevice)
@@ -1217,7 +1235,7 @@ bool DeviceManager_VK::CreateDevice()
     vulkanInfo.vkDevice = m_VulkanDevice;
     vulkanInfo.vkInstance = m_VulkanInstance;
     vulkanInfo.vkPhysicalDevice = m_VulkanPhysicalDevice;
-    vulkanInfo.computeQueueIndex = kComputeQueueIndex;
+    vulkanInfo.computeQueueIndex = m_ComputeQueueIndex;
     vulkanInfo.computeQueueFamily = m_ComputeQueueFamily;
     vulkanInfo.graphicsQueueIndex = kGraphicsQueueIndex;
     vulkanInfo.graphicsQueueFamily = m_GraphicsQueueFamily;
