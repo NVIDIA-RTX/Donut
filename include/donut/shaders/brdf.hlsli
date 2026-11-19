@@ -234,10 +234,15 @@ float ImportanceSampleGGX_VNDF_PDF(float roughness, float3 N, float3 V, float3 L
     float3 H = normalize(L + V);
     float NoH = saturate(dot(N, H));
     float VoH = saturate(dot(V, H));
+    float NoV = saturate(dot(N, V));
 
     float alpha = square(roughness);
     float D = square(alpha) / (M_PI * square(square(NoH) * square(alpha) + (1 - square(NoH))));
-    return (VoH > 0.0) ? D / (4.0 * VoH) : 0.0;
+
+    // The visible normal pdf of H is G1(V) * VoH * D / NoV, and reflecting V around H
+    // multiplies it by 1 / (4 * VoH), so the pdf of L is G1(V) * D / (4 * NoV).
+    // This matches ImportanceSampleGGX_VNDF with ndf_trim = 1.
+    return (VoH > 0.0 && NoV > 0.0) ? G1_Smith(roughness, NoV) * D / (4.0 * NoV) : 0.0;
 }
 
 #endif // BRDF_HLSLI
